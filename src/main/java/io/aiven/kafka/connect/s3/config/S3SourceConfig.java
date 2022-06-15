@@ -5,6 +5,9 @@ import org.apache.kafka.common.config.ConfigDef;
 import java.util.Map;
 
 public class S3SourceConfig extends AivenCommonS3Config {
+
+    public static final String TOPIC_PARTITION_ID = "topic.partition.id";
+
     public S3SourceConfig(Map<String, String> properties) {
         super(configDef(), properties);
     }
