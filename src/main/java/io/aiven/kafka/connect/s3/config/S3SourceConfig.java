@@ -4,13 +4,13 @@ import org.apache.kafka.common.config.ConfigDef;
 
 import java.util.Map;
 
-public class S3SinkConfig extends AivenCommonS3Config {
-    public S3SinkConfig(Map<String, String> properties) {
+public class S3SourceConfig extends AivenCommonS3Config {
+    public S3SourceConfig(Map<String, String> properties) {
         super(configDef(), properties);
     }
 
     public static ConfigDef configDef() {
-        final var configDef = new S3SinkConfigDef();
+        final var configDef = new S3SourceConfigDef();
         addAwsConfigGroup(configDef);
         addAwsStsConfigGroup(configDef);
         addFileConfigGroup(configDef);

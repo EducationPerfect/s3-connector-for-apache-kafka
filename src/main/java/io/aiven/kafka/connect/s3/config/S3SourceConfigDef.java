@@ -9,7 +9,6 @@ import java.util.Map;
 public class S3SourceConfigDef extends ConfigDef  {
     @Override
     public List<ConfigValue> validate(final Map<String, String> props) {
-//        return super.validate(S3SinkConfig.preprocessProperties(props));
-        return super.validate(props);
+        return super.validate(S3SourceConfig.preprocessProperties(props));
     }
 }

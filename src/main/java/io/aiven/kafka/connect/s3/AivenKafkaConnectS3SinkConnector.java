@@ -21,11 +21,12 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 
+import io.aiven.kafka.connect.s3.config.S3SourceConfigDef;
 import org.apache.kafka.common.config.ConfigDef;
 import org.apache.kafka.connect.connector.Task;
 import org.apache.kafka.connect.sink.SinkConnector;
 
-import io.aiven.kafka.connect.s3.config.S3SinkConfig;
+import io.aiven.kafka.connect.s3.config.S3SourceConfig;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -38,7 +39,7 @@ public class AivenKafkaConnectS3SinkConnector extends SinkConnector {
 
     @Override
     public ConfigDef config() {
-        return S3SinkConfig.configDef();
+        return S3SourceConfig.configDef();
     }
 
     @Override
