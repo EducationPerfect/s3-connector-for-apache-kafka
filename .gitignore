@@ -9,3 +9,5 @@ build/
 rpm/
 rpmbuild/
 *.sh
+
+.jqwik-database

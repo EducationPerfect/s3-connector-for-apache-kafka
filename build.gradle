@@ -144,6 +144,8 @@ dependencies {
 
     testImplementation "org.junit.jupiter:junit-jupiter:$junitVersion"
 
+    testImplementation 'net.jqwik:jqwik:1.6.5'
+
     testImplementation "io.findify:s3mock_2.11:0.2.6"
 
     testImplementation "org.hamcrest:hamcrest:2.2"
