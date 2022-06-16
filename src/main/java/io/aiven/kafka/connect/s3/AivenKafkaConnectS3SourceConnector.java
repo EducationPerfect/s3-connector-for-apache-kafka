@@ -1,7 +1,10 @@
 package io.aiven.kafka.connect.s3;
 
+import com.amazonaws.services.s3.AmazonS3;
 import io.aiven.kafka.connect.s3.config.S3SinkConfig;
 import io.aiven.kafka.connect.s3.config.S3SourceConfig;
+import io.aiven.kafka.connect.s3.source.S3Partition;
+import io.aiven.kafka.connect.s3.source.SourcePartitions;
 import org.apache.kafka.common.config.ConfigDef;
 import org.apache.kafka.connect.connector.Task;
 import org.apache.kafka.connect.source.SourceConnector;
@@ -33,6 +36,17 @@ public class AivenKafkaConnectS3SourceConnector extends SourceConnector {
 
     @Override
     public List<Map<String, String>> taskConfigs(int maxTasks) {
+
+        // TODO: Fill these from the config
+        AmazonS3 client = null;
+        String bucket = null;
+        String filenameTemplate = null;
+        String[] sourceTopics = {};
+
+        List<S3Partition> partitions = SourcePartitions.discover(client, bucket, filenameTemplate, sourceTopics);
+
+        // TODO: Split partitions into `maxTasks` chunks and create a config for each of them
+
         final var taskProps = new ArrayList<Map<String, String>>();
         for (int i = 0; i < maxTasks; i++) {
             final var props = Map.copyOf(configProperties);

@@ -16,6 +16,22 @@
 
 package io.aiven.kafka.connect.s3;
 
+import com.amazonaws.services.s3.AmazonS3;
+import io.aiven.kafka.connect.common.config.FilenameTemplateVariable;
+import io.aiven.kafka.connect.common.grouper.RecordGrouper;
+import io.aiven.kafka.connect.common.grouper.RecordGrouperFactory;
+import io.aiven.kafka.connect.common.output.OutputWriter;
+import io.aiven.kafka.connect.common.templating.VariableTemplatePart;
+import io.aiven.kafka.connect.s3.config.AwsCredentialProviderFactory;
+import io.aiven.kafka.connect.s3.config.S3SinkConfig;
+import org.apache.kafka.clients.consumer.OffsetAndMetadata;
+import org.apache.kafka.common.TopicPartition;
+import org.apache.kafka.connect.errors.ConnectException;
+import org.apache.kafka.connect.sink.SinkRecord;
+import org.apache.kafka.connect.sink.SinkTask;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import java.io.IOException;
 import java.io.OutputStream;
 import java.time.LocalDateTime;
@@ -27,30 +43,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 
-import org.apache.kafka.clients.consumer.OffsetAndMetadata;
-import org.apache.kafka.common.TopicPartition;
-import org.apache.kafka.connect.errors.ConnectException;
-import org.apache.kafka.connect.sink.SinkRecord;
-import org.apache.kafka.connect.sink.SinkTask;
-
-import io.aiven.kafka.connect.common.config.FilenameTemplateVariable;
-import io.aiven.kafka.connect.common.grouper.RecordGrouper;
-import io.aiven.kafka.connect.common.grouper.RecordGrouperFactory;
-import io.aiven.kafka.connect.common.output.OutputWriter;
-import io.aiven.kafka.connect.common.templating.VariableTemplatePart;
-import io.aiven.kafka.connect.s3.config.AwsCredentialProviderFactory;
-import io.aiven.kafka.connect.s3.config.S3SinkConfig;
-
-import com.amazonaws.PredefinedClientConfigurations;
-import com.amazonaws.retry.PredefinedBackoffStrategies;
-import com.amazonaws.retry.PredefinedRetryPolicies;
-import com.amazonaws.retry.RetryPolicy;
-import com.amazonaws.services.s3.AmazonS3;
-import com.amazonaws.services.s3.AmazonS3ClientBuilder;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
-import static com.amazonaws.client.builder.AwsClientBuilder.EndpointConfiguration;
 
 public class S3SinkTask extends SinkTask {
 
@@ -72,7 +64,7 @@ public class S3SinkTask extends SinkTask {
     public void start(final Map<String, String> props) {
         Objects.requireNonNull(props, "props hasn't been set");
         config = new S3SinkConfig(props);
-        s3Client = createAmazonS3Client(config);
+        s3Client = AWS.createAmazonS3Client(config);
         try {
             recordGrouper = RecordGrouperFactory.newRecordGrouper(config);
         } catch (final Exception e) {
@@ -81,33 +73,6 @@ public class S3SinkTask extends SinkTask {
         if (Objects.nonNull(config.getKafkaRetryBackoffMs())) {
             context.timeout(config.getKafkaRetryBackoffMs());
         }
-    }
-
-    private AmazonS3 createAmazonS3Client(final S3SinkConfig config) {
-        final var awsEndpointConfig = newEndpointConfiguration(this.config);
-        final var clientConfig =
-                PredefinedClientConfigurations.defaultConfig()
-                        .withRetryPolicy(new RetryPolicy(
-                                PredefinedRetryPolicies.DEFAULT_RETRY_CONDITION,
-                                new PredefinedBackoffStrategies.FullJitterBackoffStrategy(
-                                        Math.toIntExact(config.getS3RetryBackoffDelayMs()),
-                                        Math.toIntExact(config.getS3RetryBackoffMaxDelayMs())
-                                ),
-                                config.getS3RetryBackoffMaxRetries(),
-                                false)
-                        );
-        final var s3ClientBuilder =
-                AmazonS3ClientBuilder
-                        .standard()
-                        .withCredentials(
-                                credentialFactory.getProvider(config)
-                        ).withClientConfiguration(clientConfig);
-        if (Objects.isNull(awsEndpointConfig)) {
-            s3ClientBuilder.withRegion(config.getAwsS3Region());
-        } else {
-            s3ClientBuilder.withEndpointConfiguration(awsEndpointConfig).withPathStyleAccessEnabled(true);
-        }
-        return s3ClientBuilder.build();
     }
 
     @Override
@@ -157,13 +122,6 @@ public class S3SinkTask extends SinkTask {
     private OutputStream newStreamFor(final String filename, final SinkRecord record) {
         final var fullKey = config.usesFileNameTemplate() ? filename : oldFullKey(record);
         return new S3OutputStream(config.getAwsS3BucketName(), fullKey, config.getAwsS3PartSize(), s3Client);
-    }
-
-    private EndpointConfiguration newEndpointConfiguration(final S3SinkConfig config) {
-        if (Objects.isNull(config.getAwsS3EndPoint())) {
-            return null;
-        }
-        return new EndpointConfiguration(config.getAwsS3EndPoint(), config.getAwsS3Region().getName());
     }
 
     private String oldFullKey(final SinkRecord record) {

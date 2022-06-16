@@ -6,6 +6,8 @@ import net.jqwik.api.constraints.AlphaChars;
 import net.jqwik.api.constraints.NotBlank;
 import net.jqwik.api.constraints.Positive;
 
+import java.util.Optional;
+
 import static org.assertj.core.api.Assertions.*;
 
 public class FilenameParserTest {
@@ -21,6 +23,6 @@ public class FilenameParserTest {
         FilenameParser parser = new FilenameParser(fileNameTemplate);
         FilenameParser.ParserResult result = parser.parse(fileName);
 
-        assertThat(result).isEqualTo(new FilenameParser.ParserResult(topic, partition, offset));
+        assertThat(result).isEqualTo(new FilenameParser.ParserResult(topic, partition, Optional.of(offset)));
     }
 }

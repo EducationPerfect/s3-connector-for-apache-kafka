@@ -1,34 +1,38 @@
 package io.aiven.kafka.connect.s3.source;
 
 import io.aiven.kafka.connect.common.config.FilenameTemplateVariable;
+
+import java.nio.file.InvalidPathException;
+import java.util.Optional;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 public final class FilenameParser {
-    private static final Param topicParam = Param.of(FilenameTemplateVariable.TOPIC.name);
-    private static final Param partitionParam = Param.of(FilenameTemplateVariable.PARTITION.name);
-    private static final Param offsetParam = Param.of(FilenameTemplateVariable.START_OFFSET.name);
+    public final String fileNameTemplate;
+
+    private static final Param topicParam = Param.of(FilenameTemplateVariable.TOPIC.name, ".+");
+    private static final Param partitionParam = Param.of(FilenameTemplateVariable.PARTITION.name, "\\\\d+");
+    private static final Param offsetParam = Param.of(FilenameTemplateVariable.START_OFFSET.name, "\\\\d+");
 
     private final Pattern parserRegex;
 
-    public record ParserResult(String topic, int partition, long offset) {
+    public record ParserResult(String topic, int partition, Optional<Long> offset) {
     }
 
-    ;
-
     private record Param(String name, String groupName, String searchToken, String groupToken, String groupRefToken) {
-        public static Param of(String name) {
+        public static Param of(String name, String expression) {
             final String groupName = name.replaceAll("[^a-zA-Z0-9]", "");
             return new Param(
                     name,
                     groupName,
                     "\\{\\{" + name + "(:.+?)?\\}\\}",
-                    "(?<" + groupName + ">.+)",
+                    "(?<" + groupName + ">" + expression + ")",
                     "\\\\k<" + groupName + ">");
         }
     }
 
     public FilenameParser(String fileNameTemplate) {
+        this.fileNameTemplate = fileNameTemplate;
         final Param[] params = {topicParam, partitionParam, offsetParam};
         String result = fileNameTemplate.replaceAll("[-\\[\\]()*+?.,\\\\\\\\^$|#]", "\\\\$0");
 
@@ -45,15 +49,19 @@ public final class FilenameParser {
 
     public ParserResult parse(String fileName) {
         final Matcher matcher = parserRegex.matcher(fileName);
-        if (matcher.matches()) {
-            try {
-                return new ParserResult(matcher.group(topicParam.groupName),
-                        Integer.parseInt(matcher.group(partitionParam.groupName)),
-                        Long.parseLong(matcher.group(offsetParam.groupName)));
-            } catch (Exception ex) {
-                return null;
-            }
+        if (matcher.find()) {
+            return new ParserResult(matcher.group(topicParam.groupName),
+                    Integer.parseInt(matcher.group(partitionParam.groupName)),
+                    getGroupOptional(matcher, offsetParam.groupName).map(Long::parseLong));
         }
-        return null;
+        throw new InvalidPathException(fileName, "Unable to parse given file name. Regex: " + parserRegex.pattern());
+    }
+
+    private static Optional<String> getGroupOptional(Matcher matcher, String groupName) {
+        try {
+            return Optional.ofNullable(matcher.group(groupName));
+        } catch (IllegalArgumentException ex) {
+            return Optional.empty();
+        }
     }
 }
