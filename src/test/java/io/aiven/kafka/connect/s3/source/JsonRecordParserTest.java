@@ -6,6 +6,9 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
 
+import java.util.Arrays;
+import java.util.Optional;
+
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.fail;
 
@@ -23,13 +26,18 @@ public final class JsonRecordParserTest {
             assertThat(result.offset()).isEqualTo(236);
             assertThat(result.key()).isEqualTo("eaae9ab6-f9c6-4240-a8a1-85aa38425fef");
 
+            // Now check if the payload is decoded correctly
             JsonNode payloadJson = permissiveJson.readTree(new String(result.value()));
+            JsonNode headers = payloadJson.get("headers");
 
-//            JsonNode headers = payloadJson.get("headers");
-//
-//            JsonRecordParser.RecordHeader<?>[] headers = permissiveJson.convertValue(foo.get("headers"), (JsonRecordParser.RecordHeader[].class));
-//
-//            assertThat(result.headers()).isEqualTo(headers);
+            Optional<Object> eventIdFromPayload = Arrays.stream(result.headers())
+                    .filter(x -> "eventId".equals(x.key()))
+                    .findFirst()
+                    .map(JsonRecordParser.RecordHeader::value);
+
+            String eventIdFromHeaders = headers.get("eventId").asText();
+
+            assertThat(eventIdFromPayload).isEqualTo(Optional.of(eventIdFromHeaders));
 
         } catch (JsonProcessingException e) {
             fail(e.getMessage());
