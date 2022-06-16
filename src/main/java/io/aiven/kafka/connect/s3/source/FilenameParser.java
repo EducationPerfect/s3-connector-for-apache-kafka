@@ -1,4 +1,4 @@
-package io.aiven.kafka.connect.s3;
+package io.aiven.kafka.connect.s3.source;
 
 import io.aiven.kafka.connect.common.config.FilenameTemplateVariable;
 import java.util.regex.Matcher;

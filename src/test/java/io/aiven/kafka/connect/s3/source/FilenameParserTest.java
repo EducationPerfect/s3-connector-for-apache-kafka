@@ -1,4 +1,4 @@
-package io.aiven.kafka.connect.s3;
+package io.aiven.kafka.connect.s3.source;
 
 import net.jqwik.api.ForAll;
 import net.jqwik.api.Property;
@@ -6,7 +6,7 @@ import net.jqwik.api.constraints.AlphaChars;
 import net.jqwik.api.constraints.NotBlank;
 import net.jqwik.api.constraints.Positive;
 
-import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.*;
 
 public class FilenameParserTest {
 
