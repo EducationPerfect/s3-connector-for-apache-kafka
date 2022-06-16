@@ -96,6 +96,8 @@ public class AivenCommonS3Config extends AivenCommonConfig {
     @Deprecated
     public static final String AWS_S3_PREFIX_CONFIG = "aws.s3.prefix";
 
+    public static final String TOPIC = "topic";
+
     public static final String AWS_ACCESS_KEY_ID_CONFIG = "aws.access.key.id";
     public static final String AWS_SECRET_ACCESS_KEY_CONFIG = "aws.secret.access.key";
     public static final String AWS_S3_BUCKET_NAME_CONFIG = "aws.s3.bucket.name";
