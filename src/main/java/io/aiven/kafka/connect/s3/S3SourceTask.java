@@ -90,7 +90,7 @@ public class S3SourceTask extends SourceTask {
     }
 
     private SourceRecord buildSourceRecord(JsonRecordParser.RecordLine record, String fileName, Long lineNumber) {
-        String topic = config.getString(S3SourceConfig.TOPIC);
+        String topic = config.getTopic();
 
         Map<String, Object> sourceOffset = buildSourceOffset(fileName, lineNumber);
         Map<String, Object> sourcePartition = buildSourcePartition(topic);

@@ -871,6 +871,10 @@ public class AivenCommonS3Config extends AivenCommonConfig {
                               getInt(AWS_STS_ROLE_SESSION_DURATION));
     }
 
+    public String getTopic() {
+        return getString(TOPIC);
+    }
+
     public boolean hasAwsStsRole() {
         return getStsRole().isValid();
     }

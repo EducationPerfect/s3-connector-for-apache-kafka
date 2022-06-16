@@ -36,21 +36,34 @@ public class AivenKafkaConnectS3SourceConnector extends SourceConnector {
 
     @Override
     public List<Map<String, String>> taskConfigs(int maxTasks) {
+        if (maxTasks == 0) {
+            return new ArrayList<>();
+        }
 
-        // TODO: Fill these from the config
-        AmazonS3 client = null;
-        String bucket = null;
-        String filenameTemplate = null;
-        String[] sourceTopics = {};
+        var config = new S3SourceConfig(Map.copyOf(configProperties));
+
+        AmazonS3 client = AWS.createAmazonS3Client(config);
+        String bucket = config.getAwsS3BucketName();
+        String filenameTemplate = config.getFilenameTemplate().toString();
+        String[] sourceTopics = {config.getTopicSource()};
 
         List<S3Partition> partitions = SourcePartitions.discover(client, bucket, filenameTemplate, sourceTopics);
 
-        // TODO: Split partitions into `maxTasks` chunks and create a config for each of them
+        int batchSize = (int) Math.ceil((double) partitions.size() / maxTasks);
+
+        // TODO:
+        //  - Split partitions into `maxTasks` chunks ✅
+        //  - create a config for each of them
 
         final var taskProps = new ArrayList<Map<String, String>>();
-        for (int i = 0; i < maxTasks; i++) {
+        for (int taskIndex = 0; taskIndex < maxTasks; taskIndex++) {
+            var taskPartitions = partitions.subList(
+                    (taskIndex * batchSize),
+                    Math.min((taskIndex * batchSize) + batchSize, partitions.size())
+            );
+
             final var props = Map.copyOf(configProperties);
-            props.put(S3SourceConfig.TOPIC_PARTITION_ID, Integer.toString(i));
+            props.put(S3SourceConfig.TOPIC_PARTITION_ID, Integer.toString(taskIndex));
 
             taskProps.add(props);
         }
