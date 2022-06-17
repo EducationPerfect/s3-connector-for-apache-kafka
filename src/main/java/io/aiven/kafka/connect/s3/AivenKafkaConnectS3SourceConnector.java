@@ -45,7 +45,7 @@ public class AivenKafkaConnectS3SourceConnector extends SourceConnector {
         AmazonS3 client = AWS.createAmazonS3Client(config);
         String bucket = config.getAwsS3BucketName();
         String filenameTemplate = config.getFilenameTemplate().toString();
-        String[] sourceTopics = {config.getTopicSource()};
+        String[] sourceTopics = config.getTopicSource().split(",");
 
         List<S3Partition> partitions = SourcePartitions.discover(client, bucket, filenameTemplate, sourceTopics);
 

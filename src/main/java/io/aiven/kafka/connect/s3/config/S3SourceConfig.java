@@ -12,6 +12,7 @@ public class S3SourceConfig extends AivenCommonS3Config {
      * `topic.partition.id` - The partition id for which to process
      */
 
+    public static final String GROUP_S3Config = "S3Config";
 
     public static final String TOPIC_SOURCE = "topic.source";
     public static final String TOPIC_PARTITION_ID = "topic.partition.id";
@@ -38,6 +39,24 @@ public class S3SourceConfig extends AivenCommonS3Config {
         addDeprecatedConfiguration(configDef);
         addKafkaBackoffPolicy(configDef);
         addS3RetryPolicies(configDef);
+        addS3SourceConfigGroup(configDef);
         return configDef;
+    }
+
+    protected static void addS3SourceConfigGroup(final ConfigDef configDef) {
+        int s3ConfigGroupCounter = 0;
+        configDef.define(
+                TOPIC_SOURCE,
+                ConfigDef.Type.STRING,
+                null,
+                new ConfigDef.NonEmptyString(),
+                ConfigDef.Importance.MEDIUM,
+                "Source topic names",
+                GROUP_S3Config,
+                s3ConfigGroupCounter++,
+                ConfigDef.Width.NONE,
+                TOPIC_SOURCE
+        );
+
     }
 }
