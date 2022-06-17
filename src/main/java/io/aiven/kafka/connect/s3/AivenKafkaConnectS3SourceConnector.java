@@ -15,6 +15,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.stream.Collectors;
 
 public class AivenKafkaConnectS3SourceConnector extends SourceConnector {
     private static final Logger LOGGER = LoggerFactory.getLogger(AivenKafkaConnectS3SourceConnector.class);
@@ -63,7 +64,12 @@ public class AivenKafkaConnectS3SourceConnector extends SourceConnector {
             );
 
             final var props = Map.copyOf(configProperties);
-            props.put(S3SourceConfig.TOPIC_PARTITION_ID, Integer.toString(taskIndex));
+            props.put(
+                    S3SourceConfig.PARTITION_PREFIX,
+                    taskPartitions.stream()
+                                  .map(s3Partition -> s3Partition.prefix())
+                                  .collect(Collectors.joining(","))
+            );
 
             taskProps.add(props);
         }

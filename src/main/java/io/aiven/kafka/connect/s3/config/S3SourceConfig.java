@@ -9,20 +9,20 @@ public class S3SourceConfig extends AivenCommonS3Config {
      * Configuration information:
      * `topic` - Destination topic to push to
      * `topic.source` - Source topic which is being pulled from
-     * `topic.partition.id` - The partition id for which to process
+     * `partition.prefixes` - Prefixes for S3 files in a given partition. comma separated.
      */
 
     public static final String GROUP_S3Config = "S3Config";
 
     public static final String TOPIC_SOURCE = "topic.source";
-    public static final String TOPIC_PARTITION_ID = "topic.partition.id";
+    public static final String PARTITION_PREFIX = "partition.prefixes";
 
     public String getTopicSource() {
         return getString(TOPIC_SOURCE);
     }
 
-    public int getPartitionId() {
-        return getInt(TOPIC_PARTITION_ID);
+    public String[] getPartitionPrefixes() {
+        return getString(PARTITION_PREFIX).split(",");
     }
 
     public S3SourceConfig(Map<String, String> properties) {
@@ -56,6 +56,19 @@ public class S3SourceConfig extends AivenCommonS3Config {
                 s3ConfigGroupCounter++,
                 ConfigDef.Width.NONE,
                 TOPIC_SOURCE
+        );
+
+        configDef.define(
+                PARTITION_PREFIX,
+                ConfigDef.Type.STRING,
+                null,
+                new ConfigDef.NonEmptyString(),
+                ConfigDef.Importance.MEDIUM,
+                "S3 file name prefixes for the partitions to work on. (S3 folders)",
+                GROUP_S3Config,
+                s3ConfigGroupCounter++,
+                ConfigDef.Width.NONE,
+                PARTITION_PREFIX
         );
 
     }

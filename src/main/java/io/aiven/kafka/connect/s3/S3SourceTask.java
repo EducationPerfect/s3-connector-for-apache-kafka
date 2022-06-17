@@ -5,6 +5,8 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import io.aiven.kafka.connect.s3.config.AwsCredentialProviderFactory;
 import io.aiven.kafka.connect.s3.config.S3SourceConfig;
 import io.aiven.kafka.connect.s3.source.JsonRecordParser;
+import io.aiven.kafka.connect.s3.source.S3Partition;
+import io.aiven.kafka.connect.s3.source.S3PartitionLines;
 import org.apache.kafka.connect.data.Schema;
 import org.apache.kafka.connect.data.SchemaAndValue;
 import org.apache.kafka.connect.header.ConnectHeaders;
@@ -26,6 +28,7 @@ public class S3SourceTask extends SourceTask {
     private String fileName;
     private long lineNumber;
     protected AwsCredentialProviderFactory credentialFactory = new AwsCredentialProviderFactory();
+    private List<S3Partition> s3partitions;
 
     static boolean isNotNullOrBlank(String str) {
         return str != null && !str.trim().isEmpty();
@@ -43,9 +46,12 @@ public class S3SourceTask extends SourceTask {
         s3Client = AWS.createAmazonS3Client(config);
         String topic = config.getString(S3SourceConfig.TOPIC);
 
+
+        s3partitions = Arrays.stream(config.getPartitionPrefixes()).map(s -> new S3Partition(config.getAwsS3BucketName(), s)).toList();
+
         Map<String, Object> persistedMap = null;
         if (context != null && context.offsetStorageReader() != null) {
-            persistedMap = context.offsetStorageReader().offset(buildSourcePartition(topic));
+            persistedMap = context.offsetStorageReader().offset(buildSourcePartition(s3partitions));
         }
 
         LOGGER.info("The persistedMap is {}", persistedMap);
@@ -65,7 +71,7 @@ public class S3SourceTask extends SourceTask {
     @Override
     public List<SourceRecord> poll() throws InterruptedException {
         var configBucket = config.getAwsS3BucketName();
-        var configPrefix = config.getPrefixTemplate();
+        var prefixes = config.getPartitionPrefixes();
 
         var fileLines = "{\"test\": \"asd\"}\n{\"test\": \"qwe\"}\n".split("\\R");
         var result = new ArrayList<SourceRecord>();
@@ -110,9 +116,7 @@ public class S3SourceTask extends SourceTask {
         );
     }
 
-    private Map<String, Object> buildSourcePartition(String topic) {
-        int partition = config.getInt(S3SourceConfig.TOPIC_PARTITION_ID);
-        String topicKey = topic + ":partion-" + partition;
+    private Map<String, Object> buildSourcePartition(List<S3Partition> partitions) {
         return Collections.singletonMap(PARTITION_KEY, topicKey);
     }
 

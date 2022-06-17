@@ -32,7 +32,7 @@ public final class SourcePartitions {
 
     private static S3Partition prefixToPartition(FilenameParser parser, String bucket, String prefix) {
         FilenameParser.ParserResult parsed = parser.parse(prefix);
-        return new S3Partition(bucket, prefix, parsed.partition());
+        return new S3Partition(bucket, prefix);
     }
 
     private static Set<String> listAllPrefixes(AmazonS3 client, String bucket, String prefix) {
