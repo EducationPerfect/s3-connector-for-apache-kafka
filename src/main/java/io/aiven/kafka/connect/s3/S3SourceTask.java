@@ -98,8 +98,7 @@ public class S3SourceTask extends SourceTask {
         ConnectHeaders headers = new ConnectHeaders();
         for (var headerIndex = 0; headerIndex < record.headers().length; headerIndex++) {
             var header = record.headers()[headerIndex];
-            //TODO: What is the type that we expect these headers to be?
-            headers.add(header.key(), new SchemaAndValue(Schema.BYTES_SCHEMA, header.value()));
+            headers.add(header.key(), new SchemaAndValue(null, header.value()));
         }
 
         return new SourceRecord(
