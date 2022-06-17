@@ -9,20 +9,28 @@ import java.io.IOException;
 import java.io.InputStreamReader;
 import java.util.Objects;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Stream;
 import java.util.zip.GZIPInputStream;
 
 public final class S3PartitionLines {
 
-    public record Line(S3Offset offset, String line) {
+    public record Line(SourceDataInfo source, S3Offset offset, String line) {
     }
 
-    public static Stream<Line> readLines(AmazonS3 client, S3Partition partition, S3Offset offset) {
+    private record PrevCurrent(String prev, S3Location curr) {}
+
+    public static Stream<Line> readLines(AmazonS3 client, FilenameParser parser, S3Partition partition, S3Offset offset) {
+        final var previousKey = offset == null ? null : offset.lastFullyProcessedKey();
+
+        final var lastProcessed = new AtomicReference<>(previousKey);
         return
-                streamFiles(client, partition.bucket(), partition.prefix(), offset == null ? null :offset.lastFullyProcessedKey())
+                streamFiles(client, partition.bucket(), partition.prefix(), previousKey)
+                        .map(x -> new PrevCurrent(lastProcessed.getAndSet(x.getPrefix()), x))
                         .flatMap(x -> {
+                            var source = parser.parse(x.curr.getPrefix());
                             try {
-                                return lines(client, x);
+                                return lines(client, source, x.prev, x.curr);
                             } catch (IOException e) {
                                 throw new RuntimeException(e);
                             }
@@ -30,14 +38,14 @@ public final class S3PartitionLines {
                         .skip(offset == null ? 0 : offset.offset());
     }
 
-    public static Stream<Line> lines(AmazonS3 client, S3Location object)
+    public static Stream<Line> lines(AmazonS3 client, SourceDataInfo source, String previousKey, S3Location current)
             throws IOException {
-        final var response = client.getObject(object.getBucketName(), object.getPrefix());
+        final var response = client.getObject(current.getBucketName(), current.getPrefix());
 
         final var lineNumber = new AtomicLong();
         return new BufferedReader(new InputStreamReader(new GZIPInputStream(response.getObjectContent())))
                 .lines()
-                .map(line -> new Line(new S3Offset(object.getPrefix(), lineNumber.getAndIncrement()), line))
+                .map(line -> new Line(source, new S3Offset(previousKey, current.getPrefix(), lineNumber.getAndIncrement()), line))
                 .onClose(() -> {
                     try {
                         response.close();

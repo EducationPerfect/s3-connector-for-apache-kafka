@@ -2,13 +2,10 @@ package io.aiven.kafka.connect.s3;
 
 import com.amazonaws.services.s3.AmazonS3;
 import com.fasterxml.jackson.core.JsonProcessingException;
+import com.google.common.collect.Iterators;
 import io.aiven.kafka.connect.s3.config.AwsCredentialProviderFactory;
 import io.aiven.kafka.connect.s3.config.S3SourceConfig;
-import io.aiven.kafka.connect.s3.source.JsonRecordParser;
-import io.aiven.kafka.connect.s3.source.S3Offset;
-import io.aiven.kafka.connect.s3.source.S3Partition;
-import io.aiven.kafka.connect.s3.source.S3PartitionLines;
-import org.apache.kafka.connect.data.Schema;
+import io.aiven.kafka.connect.s3.source.*;
 import org.apache.kafka.connect.data.SchemaAndValue;
 import org.apache.kafka.connect.header.ConnectHeaders;
 import org.apache.kafka.connect.source.SourceRecord;
@@ -21,9 +18,12 @@ import java.util.*;
 
 public class S3SourceTask extends SourceTask {
     private static final Logger LOGGER = LoggerFactory.getLogger(S3SourceTask.class);
-    private static final String FILE_NAME = "file_name";
+    private static final String CURRENT_OBJECT_KEY = "current_file_name";
+    private static final String LAST_PROCESSED_OBJECT_KEY = "last_processed_file_name";
     private static final String LINE_NUMBER = "line_number";
     private static final String PARTITION_KEY = "partition_key";
+
+    private FilenameParser filenameParser;
 
     private S3SourceConfig config;
     private AmazonS3 s3Client;
@@ -47,6 +47,8 @@ public class S3SourceTask extends SourceTask {
         Objects.requireNonNull(this.context.offsetStorageReader(), "offsetStorageReader hasn't been set");
 
         config = new S3SourceConfig(props);
+        filenameParser = new FilenameParser(config.getFilenameTemplate().toString());
+
         s3Client = AWS.createAmazonS3Client(config);
 
         partitionsOffsets = Arrays
@@ -62,10 +64,11 @@ public class S3SourceTask extends SourceTask {
         final var mPart = fromS3Partition(partition);
         final var mOffset = reader.offset(mPart);
 
-        final var name = mOffset.get(FILE_NAME);
+        final var name = mOffset.get(CURRENT_OBJECT_KEY);
+        final var last = mOffset.get(LAST_PROCESSED_OBJECT_KEY);
         final var lineNumber = mOffset.get(LINE_NUMBER);
 
-        final var offset = (name != null && lineNumber != null) ? new S3Offset((String)name, (Long)lineNumber) : null;
+        final var offset = (name != null && lineNumber != null) ? new S3Offset((String)last, (String)name, (Long)lineNumber) : null;
 
         return new PartitionOffset(partition, offset);
     }
@@ -82,20 +85,37 @@ public class S3SourceTask extends SourceTask {
         var configBucket = config.getAwsS3BucketName();
         var prefixes = config.getPartitionPrefixes();
 
-        var fileLines = "{\"test\": \"asd\"}\n{\"test\": \"qwe\"}\n".split("\\R");
-        var result = new ArrayList<SourceRecord>();
-        try {
-            for (long lineNumber = 0; lineNumber < fileLines.length; lineNumber++) {
-                var sourceRecord = buildSourceRecord(JsonRecordParser.parse(fileLines[(int) lineNumber]), "testFile.jsonl", lineNumber);
-                result.add(sourceRecord);
-            }
-        }
-        catch (JsonProcessingException ex)
-        {
-            LOGGER.error("An error occurred while processing file");
+        for (var partition : partitionsOffsets) {
+            var stream = S3PartitionLines.readLines(s3Client, filenameParser, partition.partition, partition.offset);
+
+            var its = Iterators.partition(stream.iterator(), 100);
+
+//                    .forEachRemaining(lines -> {
+//                        lines.stream().map(x -> {
+//                            try {
+//                                return buildSourceRecord(partition.partition, x);
+//                            } catch (JsonProcessingException ex) {
+//                                throw new RuntimeException(ex.getMessage());
+//                            }
+//                        });
+//                    });
         }
 
-        return result;
+//        var fileLines = "{\"test\": \"asd\"}\n{\"test\": \"qwe\"}\n".split("\\R");
+//
+//        var result = new ArrayList<SourceRecord>();
+//        try {
+//            for (long lineNumber = 0; lineNumber < fileLines.length; lineNumber++) {
+//                var sourceRecord = buildSourceRecord(JsonRecordParser.parse(fileLines[(int) lineNumber]), "testFile.jsonl", lineNumber);
+//                result.add(sourceRecord);
+//            }
+//        }
+//        catch (JsonProcessingException ex)
+//        {
+//            LOGGER.error("An error occurred while processing file");
+//        }
+
+        return null;
     }
 
     @Override
@@ -104,11 +124,13 @@ public class S3SourceTask extends SourceTask {
         LOGGER.info("Stop S3 Source Task");
     }
 
-    private SourceRecord buildSourceRecord(JsonRecordParser.RecordLine record, String fileName, Long lineNumber) {
+    private SourceRecord buildSourceRecord(S3Partition partition, S3PartitionLines.Line line) throws JsonProcessingException {
         String topic = config.getTopic();
 
-        Map<String, Object> sourceOffset = buildSourceOffset(fileName, lineNumber);
-        Map<String, Object> sourcePartition = buildSourcePartition(topic);
+        Map<String, Object> sourceOffset = buildSourceOffset(line.offset());
+        Map<String, Object> sourcePartition = buildSourcePartition(partition);
+
+        var record = JsonRecordParser.parse(line.line());
 
         ConnectHeaders headers = new ConnectHeaders();
         for (var headerIndex = 0; headerIndex < record.headers().length; headerIndex++) {
@@ -118,21 +140,22 @@ public class S3SourceTask extends SourceTask {
 
         return new SourceRecord(
             sourcePartition, sourceOffset,
-            topic, null,
+            topic, line.source().partition(),
             null, record.key(),
             null, record.value(),
             record.timestamp().getMillis(), headers
         );
     }
 
-    private Map<String, Object> buildSourcePartition(List<S3Partition> partitions) {
-        return Collections.singletonMap(PARTITION_KEY, topicKey);
+    private Map<String, Object> buildSourcePartition(S3Partition partition) {
+        return Collections.singletonMap(PARTITION_KEY, null);
     }
 
-    private Map<String, Object> buildSourceOffset(String fileName, Long lineNumber) {
+    private Map<String, Object> buildSourceOffset(S3Offset offset) {
         Map<String, Object> sourceOffset = new HashMap<>();
-        sourceOffset.put(FILE_NAME, fileName);
-        sourceOffset.put(LINE_NUMBER, lineNumber);
+        sourceOffset.put(CURRENT_OBJECT_KEY, offset.currentKey());
+        sourceOffset.put(LAST_PROCESSED_OBJECT_KEY, offset.lastFullyProcessedKey());
+        sourceOffset.put(LINE_NUMBER, offset.offset());
         return sourceOffset;
     }
 }

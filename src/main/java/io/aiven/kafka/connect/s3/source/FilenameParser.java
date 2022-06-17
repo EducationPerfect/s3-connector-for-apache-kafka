@@ -16,9 +16,6 @@ public final class FilenameParser {
 
     private final Pattern parserRegex;
 
-    public record ParserResult(String topic, int partition, Optional<Long> offset) {
-    }
-
     private record Param(String name, String groupName, String searchToken, String groupToken, String groupRefToken) {
         public static Param of(String name, String expression) {
             final String groupName = name.replaceAll("[^a-zA-Z0-9]", "");
@@ -47,10 +44,10 @@ public final class FilenameParser {
         parserRegex = Pattern.compile(regex);
     }
 
-    public ParserResult parse(String fileName) {
+    public SourceDataInfo parse(String fileName) {
         final Matcher matcher = parserRegex.matcher(fileName);
         if (matcher.find()) {
-            return new ParserResult(matcher.group(topicParam.groupName),
+            return new SourceDataInfo(matcher.group(topicParam.groupName),
                     Integer.parseInt(matcher.group(partitionParam.groupName)),
                     getGroupOptional(matcher, offsetParam.groupName).map(Long::parseLong));
         }
