@@ -3,7 +3,6 @@ package io.aiven.kafka.connect.s3.source;
 import com.amazonaws.services.s3.AmazonS3;
 import com.amazonaws.services.s3.model.ListObjectsV2Request;
 import com.amazonaws.services.s3.model.S3Location;
-import io.aiven.kafka.connect.s3.S3Offset;
 
 import java.io.BufferedReader;
 import java.io.IOException;
@@ -18,16 +17,17 @@ public final class S3PartitionLines {
     public record Line(S3Offset offset, String line) {
     }
 
-    public static Stream<Line> readLines(AmazonS3 client, String bucket, String prefix, String afterKey) {
+    public static Stream<Line> readLines(AmazonS3 client, S3Partition partition, S3Offset offset) {
         return
-                streamFiles(client, bucket, prefix, afterKey)
+                streamFiles(client, partition.bucket(), partition.prefix(), offset == null ? null :offset.lastFullyProcessedKey())
                         .flatMap(x -> {
                             try {
                                 return lines(client, x);
                             } catch (IOException e) {
                                 throw new RuntimeException(e);
                             }
-                        });
+                        })
+                        .skip(offset == null ? 0 : offset.offset());
     }
 
     public static Stream<Line> lines(AmazonS3 client, S3Location object)
