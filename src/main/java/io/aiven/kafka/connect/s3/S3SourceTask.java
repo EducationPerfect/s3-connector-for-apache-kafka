@@ -5,6 +5,7 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import io.aiven.kafka.connect.s3.config.AwsCredentialProviderFactory;
 import io.aiven.kafka.connect.s3.config.S3SourceConfig;
 import io.aiven.kafka.connect.s3.source.JsonRecordParser;
+import io.aiven.kafka.connect.s3.source.S3Offset;
 import io.aiven.kafka.connect.s3.source.S3Partition;
 import io.aiven.kafka.connect.s3.source.S3PartitionLines;
 import org.apache.kafka.connect.data.Schema;
@@ -12,6 +13,7 @@ import org.apache.kafka.connect.data.SchemaAndValue;
 import org.apache.kafka.connect.header.ConnectHeaders;
 import org.apache.kafka.connect.source.SourceRecord;
 import org.apache.kafka.connect.source.SourceTask;
+import org.apache.kafka.connect.storage.OffsetStorageReader;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -25,10 +27,9 @@ public class S3SourceTask extends SourceTask {
 
     private S3SourceConfig config;
     private AmazonS3 s3Client;
-    private String fileName;
-    private long lineNumber;
+
     protected AwsCredentialProviderFactory credentialFactory = new AwsCredentialProviderFactory();
-    private List<S3Partition> s3partitions;
+    private List<PartitionOffset> partitionsOffsets;
 
     static boolean isNotNullOrBlank(String str) {
         return str != null && !str.trim().isEmpty();
@@ -42,30 +43,38 @@ public class S3SourceTask extends SourceTask {
     @Override
     public void start(Map<String, String> props) {
         Objects.requireNonNull(props, "props hasn't been set");
+        Objects.requireNonNull(this.context, "context hasn't been set");
+        Objects.requireNonNull(this.context.offsetStorageReader(), "offsetStorageReader hasn't been set");
+
         config = new S3SourceConfig(props);
         s3Client = AWS.createAmazonS3Client(config);
-        String topic = config.getString(S3SourceConfig.TOPIC);
 
+        partitionsOffsets = Arrays
+                .stream(config.getPartitionPrefixes())
+                .map(s -> new S3Partition(config.getAwsS3BucketName(), s))
+                .map(p -> getOffsetFor(context.offsetStorageReader(), p))
+                .filter(Objects::nonNull)
+                .toList();
+    }
 
-        s3partitions = Arrays.stream(config.getPartitionPrefixes()).map(s -> new S3Partition(config.getAwsS3BucketName(), s)).toList();
+    private record PartitionOffset(S3Partition partition, S3Offset offset) { }
+    private PartitionOffset getOffsetFor(OffsetStorageReader reader, S3Partition partition) {
+        final var mPart = fromS3Partition(partition);
+        final var mOffset = reader.offset(mPart);
 
-        Map<String, Object> persistedMap = null;
-        if (context != null && context.offsetStorageReader() != null) {
-            persistedMap = context.offsetStorageReader().offset(buildSourcePartition(s3partitions));
-        }
+        final var name = mOffset.get(FILE_NAME);
+        final var lineNumber = mOffset.get(LINE_NUMBER);
 
-        LOGGER.info("The persistedMap is {}", persistedMap);
-        if (persistedMap != null) {
-            String fileName = (String) persistedMap.get(FILE_NAME);
-            if (isNotNullOrBlank(fileName)) {
-                this.fileName = fileName;
-            }
+        final var offset = (name != null && lineNumber != null) ? new S3Offset((String)name, (Long)lineNumber) : null;
 
-            Object lineNumber = persistedMap.get(LINE_NUMBER);
-            if (lineNumber != null) {
-                this.lineNumber = (long) lineNumber;
-            }
-        }
+        return new PartitionOffset(partition, offset);
+    }
+
+    private Map<String, String> fromS3Partition(S3Partition partition) {
+        var result = new HashMap<String, String>();
+        result.put("bucket", partition.bucket());
+        result.put("prefix", partition.prefix());
+        return result;
     }
 
     @Override
