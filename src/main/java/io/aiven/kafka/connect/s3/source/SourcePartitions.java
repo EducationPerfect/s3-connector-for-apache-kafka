@@ -6,15 +6,17 @@ import com.amazonaws.services.s3.model.ListObjectsV2Result;
 import io.aiven.kafka.connect.common.config.FilenameTemplateVariable;
 import io.aiven.kafka.connect.common.templating.Template;
 
-import java.nio.file.Path;
 import java.util.*;
+import org.apache.commons.io.*;
 
 public final class SourcePartitions {
     public static List<S3Partition> discover(AmazonS3 client, String bucket, String fileNameTemplate, String[] topics) {
         String partitionClause = "(\\{\\{" + FilenameTemplateVariable.PARTITION.name + "(:\\d+?)?\\}\\})";
-        String fullPrefix = Path.of(fileNameTemplate).getParent().toString();
+        String fullPrefix = FilenameUtils.getPath(fileNameTemplate);
         String partitionPrefix = fullPrefix.replaceAll(partitionClause + ".*$", "");
         String partitionTemplate = fullPrefix.replaceAll(partitionClause + ".*$", "$1");
+
+
 
         Template t = Template.of(partitionPrefix);
         FilenameParser parser = new FilenameParser(partitionTemplate);

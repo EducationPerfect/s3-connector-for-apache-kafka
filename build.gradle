@@ -129,6 +129,9 @@ dependencies {
     compileOnly "org.apache.kafka:connect-api:$kafkaVersion"
     compileOnly "org.apache.kafka:connect-runtime:$kafkaVersion"
 
+
+    implementation 'commons-io:commons-io:2.11.0'
+
     implementation "org.slf4j:slf4j-api:$slf4jVersion"
     implementation "com.amazonaws:aws-java-sdk-s3:$amazonS3Version"
     implementation "com.amazonaws:aws-java-sdk-sts:$amazonSTSVersion"
