@@ -20,9 +20,9 @@ public class FilenameParserTest {
         String fileName = String.format("aiven/%1$s/partition=%2$d/%1$s+%2$d+%3$d.json.gz", topic, partition, offset);
         String fileNameTemplate = "aiven/{{topic}}/partition={{partition}}/{{topic}}+{{partition}}+{{start_offset:padding=true}}.json.gz";
 
-        FilenameParser parser = new FilenameParser(fileNameTemplate);
-        FilenameParser.ParserResult result = parser.parse(fileName);
+        final var parser = new FilenameParser(fileNameTemplate);
+        final var result = parser.parse(fileName);
 
-        assertThat(result).isEqualTo(new FilenameParser.ParserResult(topic, partition, Optional.of(offset)));
+        assertThat(result).isEqualTo(new SourceFile(fileName, topic, partition, Optional.of(offset)));
     }
 }

@@ -2,10 +2,11 @@ package io.aiven.kafka.connect.s3;
 
 import com.amazonaws.services.s3.AmazonS3;
 import com.fasterxml.jackson.core.JsonProcessingException;
-import com.google.common.collect.Iterators;
-import io.aiven.kafka.connect.s3.config.AwsCredentialProviderFactory;
 import io.aiven.kafka.connect.s3.config.S3SourceConfig;
 import io.aiven.kafka.connect.s3.source.*;
+import io.aiven.kafka.connect.s3.utils.ICloseableIterator;
+import io.aiven.kafka.connect.s3.utils.IteratorUtils;
+import io.aiven.kafka.connect.s3.utils.StreamUtils;
 import org.apache.kafka.connect.data.SchemaAndValue;
 import org.apache.kafka.connect.header.ConnectHeaders;
 import org.apache.kafka.connect.source.SourceRecord;
@@ -18,27 +19,50 @@ import java.util.*;
 
 public class S3SourceTask extends SourceTask {
     private static final Logger LOGGER = LoggerFactory.getLogger(S3SourceTask.class);
-    private static final String CURRENT_OBJECT_KEY = "current_file_name";
-    private static final String LAST_PROCESSED_OBJECT_KEY = "last_processed_file_name";
-    private static final String LINE_NUMBER = "line_number";
-    private static final String PARTITION_KEY = "partition_key";
+    private static final String LAST_PROCESSED_OBJECT_KEY = "filename.last";
+    private static final String LINE_NUMBER = "line.number";
+    private static final String BUCKET_NAME = "bucket.name";
+    private static final String PARTITION_KEY = "partition.key";
 
     private FilenameParser filenameParser;
 
     private S3SourceConfig config;
     private AmazonS3 s3Client;
 
-    protected AwsCredentialProviderFactory credentialFactory = new AwsCredentialProviderFactory();
-    private List<PartitionOffset> partitionsOffsets;
+    /**
+     * We will be "rotating" partitions to ensure fair distribution.
+     * The "top" partition is getting processed, and is returned to the bottom of the queue
+     * if its current "stream" is fully processed, or to the top of the queue if there are
+     * more items in its current "stream" to process.
+     */
+    private Deque<PartitionStream> partitionsQueue;
 
-    static boolean isNotNullOrBlank(String str) {
-        return str != null && !str.trim().isEmpty();
-    }
 
     @Override
     public String version() {
         return Version.VERSION;
     }
+
+    /**
+     * When handling a partition, we read data from its files and send it to the Kafka topic.
+     * Connector's `poll()` method requires returning a batch for each `poll` invocation.
+     * A batch per file would be a nice approximation, but it may not work or may not be
+     * efficient in these conditions:
+     *
+     * 1. A file is too large to fit in a single batch.
+     * 2. Files are small, and doing lots of "listObjects" is expensive and suboptimal.
+     *
+     * Because of that, for each partition we open a "page" of several files, which are then
+     * transparently represented as a sequence of batches.
+     *
+     * The idea is that the partition remains "active" until it has "remaining batches" associated with it,
+     * and when there are no more batches, the next is picked up for handling.
+     *
+     * The partitions then are circled in a queue: process a "page" for one partition, then for another one, etc.
+     */
+    private record PartitionStream(
+            S3Partition partition,
+            ICloseableIterator<List<RawSourceRecord>> remainingBatches) {}
 
     @Override
     public void start(Map<String, String> props) {
@@ -51,71 +75,70 @@ public class S3SourceTask extends SourceTask {
 
         s3Client = AWS.createAmazonS3Client(config);
 
-        partitionsOffsets = Arrays
+        // Initialise all partition streams, each with no "remaining batches", of course
+        var allPartitions = Arrays
                 .stream(config.getPartitionPrefixes())
-                .map(s -> new S3Partition(config.getAwsS3BucketName(), s))
-                .map(p -> getOffsetFor(context.offsetStorageReader(), p))
-                .filter(Objects::nonNull)
+                .map(s -> new PartitionStream(new S3Partition(config.getAwsS3BucketName(), s), null))
                 .toList();
+
+        // Here is a queue in which partitions will be roted:
+        // When we handle a batch and the partition has more batches to process,
+        // then we put it back at the front of the queue,
+        // so that it will be handled next time, until no more batches.
+        // Otherwise, when there are no more batches, the partition is sent back to the end of the queue.
+        partitionsQueue = new LinkedList<>(allPartitions);
     }
 
-    private record PartitionOffset(S3Partition partition, S3Offset offset) { }
-    private PartitionOffset getOffsetFor(OffsetStorageReader reader, S3Partition partition) {
-        final var mPart = fromS3Partition(partition);
-        final var mOffset = reader.offset(mPart);
-
-        final var name = mOffset.get(CURRENT_OBJECT_KEY);
-        final var last = mOffset.get(LAST_PROCESSED_OBJECT_KEY);
-        final var lineNumber = mOffset.get(LINE_NUMBER);
-
-        final var offset = (name != null && lineNumber != null) ? new S3Offset((String)last, (String)name, (Long)lineNumber) : null;
-
-        return new PartitionOffset(partition, offset);
-    }
-
-    private Map<String, String> fromS3Partition(S3Partition partition) {
-        var result = new HashMap<String, String>();
-        result.put("bucket", partition.bucket());
-        result.put("prefix", partition.prefix());
-        return result;
+    /**
+     *  Gets the batches iterator for a given partition.
+     *  If there is no known batches iterator for the partition, a new one will be created.
+     */
+    private ICloseableIterator<List<RawSourceRecord>> getBatches(PartitionStream partition) {
+        if (partition.remainingBatches == null) {
+            var offset = readStoredOffset(context.offsetStorageReader(), partition.partition());
+            var linesStream = S3PartitionLines.readLines(s3Client, partition.partition(), filenameParser, offset, 10);
+            var batches = StreamUtils.batching(100, linesStream);
+            return StreamUtils.asClosableIterator(batches);
+        } else {
+            return partition.remainingBatches;
+        }
     }
 
     @Override
     public List<SourceRecord> poll() throws InterruptedException {
-        var configBucket = config.getAwsS3BucketName();
-        var prefixes = config.getPartitionPrefixes();
+        Objects.requireNonNull(this.context, "context hasn't been set");
+        Objects.requireNonNull(this.context.offsetStorageReader(), "offsetStorageReader hasn't been set");
 
-        for (var partition : partitionsOffsets) {
-            var stream = S3PartitionLines.readLines(s3Client, filenameParser, partition.partition, partition.offset);
+        // take next partition from the top of the queue and put it to the back so that others will have turns
+        var partition = partitionsQueue.poll();
+        Objects.requireNonNull(partition, "Panic: partitionsQueue is empty");
 
-            var its = Iterators.partition(stream.iterator(), 100);
+        var remainingBatches = getBatches(partition);
 
-//                    .forEachRemaining(lines -> {
-//                        lines.stream().map(x -> {
-//                            try {
-//                                return buildSourceRecord(partition.partition, x);
-//                            } catch (JsonProcessingException ex) {
-//                                throw new RuntimeException(ex.getMessage());
-//                            }
-//                        });
-//                    });
+        var batch = IteratorUtils
+                .getNext(remainingBatches, List.of())
+                .stream()
+                .map(r -> {
+                    try {
+                        return buildSourceRecord(partition.partition, r);
+                    } catch (JsonProcessingException ex) {
+                        throw new RuntimeException(ex.getMessage());
+                    }
+                })
+                .toList();
+
+        if (remainingBatches.hasNext()) {
+            partitionsQueue.addFirst(new PartitionStream(partition.partition(), remainingBatches));
+        } else {
+            try {
+                remainingBatches.close();
+            } catch (Exception e) {
+                throw new InterruptedException(e.getMessage());
+            }
+            partitionsQueue.add(new PartitionStream(partition.partition(), null));
         }
 
-//        var fileLines = "{\"test\": \"asd\"}\n{\"test\": \"qwe\"}\n".split("\\R");
-//
-//        var result = new ArrayList<SourceRecord>();
-//        try {
-//            for (long lineNumber = 0; lineNumber < fileLines.length; lineNumber++) {
-//                var sourceRecord = buildSourceRecord(JsonRecordParser.parse(fileLines[(int) lineNumber]), "testFile.jsonl", lineNumber);
-//                result.add(sourceRecord);
-//            }
-//        }
-//        catch (JsonProcessingException ex)
-//        {
-//            LOGGER.error("An error occurred while processing file");
-//        }
-
-        return null;
+        return batch;
     }
 
     @Override
@@ -124,11 +147,11 @@ public class S3SourceTask extends SourceTask {
         LOGGER.info("Stop S3 Source Task");
     }
 
-    private SourceRecord buildSourceRecord(S3Partition partition, S3PartitionLines.Line line) throws JsonProcessingException {
+    private SourceRecord buildSourceRecord(S3Partition partition, RawSourceRecord line) throws JsonProcessingException {
         String topic = config.getTopic();
 
-        Map<String, Object> sourceOffset = buildSourceOffset(line.offset());
-        Map<String, Object> sourcePartition = buildSourcePartition(partition);
+        Map<String, Object> sourceOffset = toSourceRecordOffset(line.offset());
+        Map<String, Object> sourcePartition = toSourceRecordPartition(partition);
 
         var record = JsonRecordParser.parse(line.line());
 
@@ -147,15 +170,27 @@ public class S3SourceTask extends SourceTask {
         );
     }
 
-    private Map<String, Object> buildSourcePartition(S3Partition partition) {
-        return Collections.singletonMap(PARTITION_KEY, null);
+    private Map<String, Object> toSourceRecordOffset(S3Offset offset) {
+        return Map.of(
+                LAST_PROCESSED_OBJECT_KEY, offset.startAfterKey(),
+                LINE_NUMBER, offset.offset()
+        );
     }
 
-    private Map<String, Object> buildSourceOffset(S3Offset offset) {
-        Map<String, Object> sourceOffset = new HashMap<>();
-        sourceOffset.put(CURRENT_OBJECT_KEY, offset.currentKey());
-        sourceOffset.put(LAST_PROCESSED_OBJECT_KEY, offset.lastFullyProcessedKey());
-        sourceOffset.put(LINE_NUMBER, offset.offset());
-        return sourceOffset;
+    private static Map<String, Object> toSourceRecordPartition(S3Partition partition) {
+        return Map.of(
+                BUCKET_NAME, partition.bucket(),
+                PARTITION_KEY, partition.prefix()
+        );
+    }
+
+    private static S3Offset readStoredOffset(OffsetStorageReader reader, S3Partition partition) {
+        final var mPart = toSourceRecordPartition(partition);
+        final var mOffset = reader.offset(mPart);
+
+        final var lastProcessed = mOffset.get(LAST_PROCESSED_OBJECT_KEY);
+        final var lineNumber = mOffset.get(LINE_NUMBER);
+
+        return (lastProcessed != null && lineNumber != null) ? new S3Offset((String)lastProcessed, (Long)lineNumber) : null;
     }
 }

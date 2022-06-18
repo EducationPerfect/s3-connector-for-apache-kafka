@@ -9,14 +9,16 @@ import io.aiven.kafka.connect.common.templating.Template;
 import java.util.*;
 import org.apache.commons.io.*;
 
-public final class SourcePartitions {
-    public static List<S3Partition> discover(AmazonS3 client, String bucket, String fileNameTemplate, String[] topics) {
+public final class SourcePartition {
+    public static List<S3Partition> discoverPartitions(
+            AmazonS3 client,
+            String bucket,
+            String fileNameTemplate,
+            String[] topics) {
         String partitionClause = "(\\{\\{" + FilenameTemplateVariable.PARTITION.name + "(:\\d+?)?\\}\\})";
         String fullPrefix = FilenameUtils.getPath(fileNameTemplate);
         String partitionPrefix = fullPrefix.replaceAll(partitionClause + ".*$", "");
         String partitionTemplate = fullPrefix.replaceAll(partitionClause + ".*$", "$1");
-
-
 
         Template t = Template.of(partitionPrefix);
         FilenameParser parser = new FilenameParser(partitionTemplate);
@@ -31,7 +33,7 @@ public final class SourcePartitions {
     }
 
     private static S3Partition prefixToPartition(FilenameParser parser, String bucket, String prefix) {
-        FilenameParser.ParserResult parsed = parser.parse(prefix);
+        final var parsed = parser.parse(prefix);
         return new S3Partition(bucket, prefix);
     }
 

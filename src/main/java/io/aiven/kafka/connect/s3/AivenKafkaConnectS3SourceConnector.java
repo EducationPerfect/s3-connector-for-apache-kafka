@@ -4,7 +4,7 @@ import com.amazonaws.services.s3.AmazonS3;
 import io.aiven.kafka.connect.s3.config.S3SinkConfig;
 import io.aiven.kafka.connect.s3.config.S3SourceConfig;
 import io.aiven.kafka.connect.s3.source.S3Partition;
-import io.aiven.kafka.connect.s3.source.SourcePartitions;
+import io.aiven.kafka.connect.s3.source.SourcePartition;
 import org.apache.kafka.common.config.ConfigDef;
 import org.apache.kafka.connect.connector.Task;
 import org.apache.kafka.connect.source.SourceConnector;
@@ -48,7 +48,7 @@ public class AivenKafkaConnectS3SourceConnector extends SourceConnector {
         String filenameTemplate = config.getFilenameTemplate().toString();
         String[] sourceTopics = config.getTopicSource().split(",");
 
-        List<S3Partition> partitions = SourcePartitions.discover(client, bucket, filenameTemplate, sourceTopics);
+        List<S3Partition> partitions = SourcePartition.discoverPartitions(client, bucket, filenameTemplate, sourceTopics);
 
         int batchSize = (int) Math.ceil((double) partitions.size() / maxTasks);
 
