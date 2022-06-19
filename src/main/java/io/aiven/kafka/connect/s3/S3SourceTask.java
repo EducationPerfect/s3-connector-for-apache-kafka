@@ -4,7 +4,7 @@ import com.amazonaws.services.s3.AmazonS3;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import io.aiven.kafka.connect.s3.config.S3SourceConfig;
 import io.aiven.kafka.connect.s3.source.*;
-import io.aiven.kafka.connect.s3.utils.ICloseableIterator;
+import io.aiven.kafka.connect.s3.utils.CloseableIterator;
 import io.aiven.kafka.connect.s3.utils.IteratorUtils;
 import io.aiven.kafka.connect.s3.utils.StreamUtils;
 import org.apache.kafka.connect.data.SchemaAndValue;
@@ -62,7 +62,7 @@ public class S3SourceTask extends SourceTask {
      */
     private record PartitionStream(
             S3Partition partition,
-            ICloseableIterator<List<RawSourceRecord>> remainingBatches) {}
+            CloseableIterator<List<RawSourceRecord>> remainingBatches) {}
 
     @Override
     public void start(Map<String, String> props) {
@@ -93,7 +93,7 @@ public class S3SourceTask extends SourceTask {
      *  Gets the batches iterator for a given partition.
      *  If there is no known batches iterator for the partition, a new one will be created.
      */
-    private ICloseableIterator<List<RawSourceRecord>> getBatches(PartitionStream partition) {
+    private CloseableIterator<List<RawSourceRecord>> getBatches(PartitionStream partition) {
         if (partition.remainingBatches == null) {
             var offset = readStoredOffset(context.offsetStorageReader(), partition.partition());
             var linesStream = S3PartitionLines.readLines(s3Client, partition.partition(), filenameParser, offset, 10);
@@ -127,6 +127,9 @@ public class S3SourceTask extends SourceTask {
                 })
                 .toList();
 
+        // if there are no more batches, then we put the partition back to the FRONT of the queue
+        // so that we keep iterating on it until it is finished.
+        // Otherwise, we put it to the BACK of the queue, so that others will have turns.
         if (remainingBatches.hasNext()) {
             partitionsQueue.addFirst(new PartitionStream(partition.partition(), remainingBatches));
         } else {
@@ -135,7 +138,7 @@ public class S3SourceTask extends SourceTask {
             } catch (Exception e) {
                 throw new InterruptedException(e.getMessage());
             }
-            partitionsQueue.add(new PartitionStream(partition.partition(), null));
+            partitionsQueue.addLast(new PartitionStream(partition.partition(), null));
         }
 
         return batch;
@@ -162,11 +165,11 @@ public class S3SourceTask extends SourceTask {
         }
 
         return new SourceRecord(
-            sourcePartition, sourceOffset,
-            topic, line.source().partition(),
-            null, record.key(),
-            null, record.value(),
-            record.timestamp().getMillis(), headers
+                sourcePartition, sourceOffset,
+                topic, line.source().partition(),
+                null, record.key(),
+                null, record.value(),
+                record.timestamp().getMillis(), headers
         );
     }
 

@@ -3,6 +3,10 @@ package io.aiven.kafka.connect.s3.utils;
 import java.util.Iterator;
 import java.util.concurrent.atomic.AtomicLong;
 
+/**
+ * CountingIterator is a wrapper around an iterator that counts items.
+ * It also returns a flag whether an item is the last one.
+ */
 public final class CountingIterator<T> implements Iterator<CountedItem<T>> {
     private final Iterator<T> iterator;
     private final AtomicLong startCount;

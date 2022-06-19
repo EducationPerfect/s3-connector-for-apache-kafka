@@ -1,18 +1,15 @@
 package io.aiven.kafka.connect.s3.utils;
 
-import com.google.common.collect.Iterators;
-
-import java.io.Closeable;
-import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
 import java.util.NoSuchElementException;
-import java.util.function.Consumer;
-import java.util.stream.Stream;
 
 import static java.util.Objects.requireNonNull;
 
+/**
+ * BatchedIterator is a wrapper around an iterator that allows for batching of items.
+ */
 public final class BatchIterator<T> implements Iterator<List<T>> {
     private final int batchSize;
     private final Iterator<T> iterator;
