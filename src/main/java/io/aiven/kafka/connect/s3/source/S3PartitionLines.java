@@ -10,7 +10,6 @@ import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.util.Objects;
-import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Stream;
 import java.util.zip.GZIPInputStream;
 
@@ -21,7 +20,7 @@ public final class S3PartitionLines {
             FilenameParser parser,
             S3Offset offset,
             int maxFiles) {
-        final var previousKey = offset == null ? null : offset.startAfterKey();
+        final var previousKey = offset == null ? null : offset.filename();
 
         // If the current file is not yet process, start with it
         Stream<S3Location> prefixStream =

@@ -175,7 +175,7 @@ public class S3SourceTask extends SourceTask {
 
     private Map<String, Object> toSourceRecordOffset(S3Offset offset) {
         return Map.of(
-                LAST_PROCESSED_OBJECT_KEY, offset.startAfterKey(),
+                LAST_PROCESSED_OBJECT_KEY, offset.filename(),
                 LINE_NUMBER, offset.offset()
         );
     }
