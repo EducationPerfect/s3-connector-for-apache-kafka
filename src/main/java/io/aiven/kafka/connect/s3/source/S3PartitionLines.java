@@ -16,7 +16,7 @@ import java.util.zip.GZIPInputStream;
 
 public final class S3PartitionLines {
 
-    private record PrevCurrent(String prev, S3Location curr) {}
+     private record PrevCurrent(String prev, S3Location curr) {}
 
     public static Stream<RawSourceRecord> readLines(
             AmazonS3 client,

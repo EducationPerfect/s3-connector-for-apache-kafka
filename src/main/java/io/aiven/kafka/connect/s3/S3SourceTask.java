@@ -191,9 +191,12 @@ public class S3SourceTask extends SourceTask {
         final var mPart = toSourceRecordPartition(partition);
         final var mOffset = reader.offset(mPart);
 
-        final var lastProcessed = mOffset.get(LAST_PROCESSED_OBJECT_KEY);
-        final var lineNumber = mOffset.get(LINE_NUMBER);
+        if (mOffset == null) { return null; }
+        else {
+            final var lastProcessed = mOffset.get(LAST_PROCESSED_OBJECT_KEY);
+            final var lineNumber = mOffset.get(LINE_NUMBER);
 
-        return (lastProcessed != null && lineNumber != null) ? new S3Offset((String)lastProcessed, (Long)lineNumber) : null;
+            return (lastProcessed != null && lineNumber != null) ? new S3Offset((String) lastProcessed, (Long) lineNumber) : null;
+        }
     }
 }

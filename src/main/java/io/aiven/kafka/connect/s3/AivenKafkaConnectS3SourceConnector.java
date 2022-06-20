@@ -5,16 +5,15 @@ import io.aiven.kafka.connect.s3.config.S3SinkConfig;
 import io.aiven.kafka.connect.s3.config.S3SourceConfig;
 import io.aiven.kafka.connect.s3.source.S3Partition;
 import io.aiven.kafka.connect.s3.source.SourcePartition;
+import io.aiven.kafka.connect.s3.utils.IteratorUtils;
+import io.aiven.kafka.connect.s3.utils.StreamUtils;
 import org.apache.kafka.common.config.ConfigDef;
 import org.apache.kafka.connect.connector.Task;
 import org.apache.kafka.connect.source.SourceConnector;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Map;
-import java.util.Objects;
+import java.util.*;
 import java.util.stream.Collectors;
 
 public class AivenKafkaConnectS3SourceConnector extends SourceConnector {
@@ -52,28 +51,17 @@ public class AivenKafkaConnectS3SourceConnector extends SourceConnector {
 
         int batchSize = (int) Math.ceil((double) partitions.size() / maxTasks);
 
-        // TODO:
-        //  - Split partitions into `maxTasks` chunks ✅
-        //  - create a config for each of them
+        var prefixes = partitions.stream().map(S3Partition::prefix);
+        var batched = StreamUtils
+                .batching(batchSize, prefixes)
+                .map(xs -> String.join(",", xs))
+                .map(x -> {
+                    Map<String, String> cfg = new HashMap<>(configProperties);
+                    cfg.put(S3SourceConfig.PARTITION_PREFIX, x);
+                    return cfg;
+                });
 
-        final var taskProps = new ArrayList<Map<String, String>>();
-        for (int taskIndex = 0; taskIndex < maxTasks; taskIndex++) {
-            var taskPartitions = partitions.subList(
-                    (taskIndex * batchSize),
-                    Math.min((taskIndex * batchSize) + batchSize, partitions.size())
-            );
-
-            final var props = Map.copyOf(configProperties);
-            props.put(
-                    S3SourceConfig.PARTITION_PREFIX,
-                    taskPartitions.stream()
-                                  .map(s3Partition -> s3Partition.prefix())
-                                  .collect(Collectors.joining(","))
-            );
-
-            taskProps.add(props);
-        }
-        return taskProps;
+        return batched.toList();
     }
 
     @Override
