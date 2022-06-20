@@ -15,9 +15,6 @@ import java.util.stream.Stream;
 import java.util.zip.GZIPInputStream;
 
 public final class S3PartitionLines {
-
-     private record PrevCurrent(String prev, S3Location curr) {}
-
     public static Stream<RawSourceRecord> readLines(
             AmazonS3 client,
             S3Partition partition,
@@ -26,15 +23,21 @@ public final class S3PartitionLines {
             int maxFiles) {
         final var previousKey = offset == null ? null : offset.startAfterKey();
 
-        final var lastProcessed = new AtomicReference<>(previousKey);
+        // If the current file is not yet process, start with it
+        Stream<S3Location> prefixStream =
+                (offset != null && previousKey != null && offset.offset() != Integer.MAX_VALUE)
+                        ? Stream.of(new S3Location().withBucketName(partition.bucket()).withPrefix(previousKey))
+                        : Stream.empty();
+
+        var filesStream = Stream.concat(prefixStream, streamFiles(client, partition.bucket(), partition.prefix(), previousKey));
+
         return
-                streamFiles(client, partition.bucket(), partition.prefix(), previousKey)
+                filesStream
                         .limit(maxFiles)
-                        .map(x -> new PrevCurrent(lastProcessed.getAndSet(x.getPrefix()), x))
                         .flatMap(x -> {
-                            var source = parser.parse(x.curr.getPrefix());
+                            var source = parser.parse(x.getPrefix());
                             try {
-                                return sourceLines(client, source, x.prev, x.curr);
+                                return sourceLines(client, source, x);
                             } catch (IOException e) {
                                 throw new RuntimeException(e);
                             }
@@ -42,7 +45,7 @@ public final class S3PartitionLines {
                         .skip(offset == null ? 0 : offset.offset());
     }
 
-    private static Stream<RawSourceRecord> sourceLines(AmazonS3 client, SourceFile source, String previousKey, S3Location current)
+    private static Stream<RawSourceRecord> sourceLines(AmazonS3 client, SourceFile source, S3Location current)
             throws IOException {
         final var response = client.getObject(current.getBucketName(), current.getPrefix());
 
@@ -52,13 +55,13 @@ public final class S3PartitionLines {
         return countedStream
                 .map(line -> {
                     var offset = line.isLast()
-                            ? new S3Offset(current.getPrefix(), 0)
-                            : new S3Offset(previousKey, line.itemNumber());
+                            ? new S3Offset(current.getPrefix(), Integer.MAX_VALUE)
+                            : new S3Offset(current.getPrefix(), line.itemNumber());
                     return new RawSourceRecord(source, offset, line.item());
                 });
     }
 
-    private static Stream<S3Location> streamFiles(
+    public static Stream<S3Location> streamFiles(
             AmazonS3 client,
             String bucket,
             String prefix,

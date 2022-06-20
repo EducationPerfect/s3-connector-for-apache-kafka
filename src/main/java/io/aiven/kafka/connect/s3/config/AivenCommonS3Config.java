@@ -96,8 +96,6 @@ public class AivenCommonS3Config extends AivenCommonConfig {
     @Deprecated
     public static final String AWS_S3_PREFIX_CONFIG = "aws.s3.prefix";
 
-    public static final String TOPIC = "topic";
-
     public static final String AWS_ACCESS_KEY_ID_CONFIG = "aws.access.key.id";
     public static final String AWS_SECRET_ACCESS_KEY_CONFIG = "aws.secret.access.key";
     public static final String AWS_S3_BUCKET_NAME_CONFIG = "aws.s3.bucket.name";
@@ -869,10 +867,6 @@ public class AivenCommonS3Config extends AivenCommonConfig {
                               getString(AWS_STS_ROLE_EXTERNAL_ID),
                               getString(AWS_STS_ROLE_SESSION_NAME),
                               getInt(AWS_STS_ROLE_SESSION_DURATION));
-    }
-
-    public String getTopic() {
-        return getString(TOPIC);
     }
 
     public boolean hasAwsStsRole() {

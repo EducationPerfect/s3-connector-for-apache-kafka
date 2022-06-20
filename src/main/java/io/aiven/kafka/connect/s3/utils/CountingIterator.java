@@ -28,6 +28,6 @@ public final class CountingIterator<T> implements Iterator<CountedItem<T>> {
     @Override
     public CountedItem<T> next() {
         var item = iterator.next();
-        return new CountedItem<>(this.startCount.getAndIncrement(), this.hasNext(), item);
+        return new CountedItem<>(this.startCount.getAndIncrement(), !this.hasNext(), item);
     }
 }

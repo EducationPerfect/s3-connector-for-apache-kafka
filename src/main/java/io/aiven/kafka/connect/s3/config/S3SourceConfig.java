@@ -16,9 +16,14 @@ public class S3SourceConfig extends AivenCommonS3Config {
 
     public static final String TOPIC_SOURCE = "topic.source";
     public static final String PARTITION_PREFIX = "partition.prefixes";
+    public static final String TOPIC = "topic";
 
     public String getTopicSource() {
         return getString(TOPIC_SOURCE);
+    }
+
+    public String getTopic() {
+        return getString(TOPIC);
     }
 
     public String[] getPartitionPrefixes() {
@@ -40,7 +45,15 @@ public class S3SourceConfig extends AivenCommonS3Config {
         addKafkaBackoffPolicy(configDef);
         addS3RetryPolicies(configDef);
         addS3SourceConfigGroup(configDef);
+        addTargetTopicGroup(configDef);
         return configDef;
+    }
+
+    protected static void addTargetTopicGroup(final ConfigDef configDef) {
+        configDef.define(TOPIC,
+                ConfigDef.Type.STRING,
+                ConfigDef.Importance.HIGH,
+                "Topic to push to");
     }
 
     protected static void addS3SourceConfigGroup(final ConfigDef configDef) {
