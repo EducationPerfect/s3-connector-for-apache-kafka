@@ -5,6 +5,7 @@ import com.amazonaws.services.s3.model.ListObjectsV2Request;
 import com.amazonaws.services.s3.model.S3Location;
 import io.aiven.kafka.connect.s3.utils.StreamUtils;
 import org.apache.commons.io.LineIterator;
+import org.apache.commons.lang3.tuple.Pair;
 
 import java.io.BufferedReader;
 import java.io.IOException;
@@ -14,7 +15,7 @@ import java.util.stream.Stream;
 import java.util.zip.GZIPInputStream;
 
 public final class S3PartitionLines {
-    public static Stream<RawSourceRecord> readLines(
+    public static Stream<RawRecordLine> readLines(
             AmazonS3 client,
             S3Partition partition,
             FilenameParser parser,
@@ -33,31 +34,32 @@ public final class S3PartitionLines {
         return
                 filesStream
                         .limit(maxFiles)
-                        .flatMap(x -> {
-                            var source = parser.parse(x.getPrefix());
-                            try {
-                                return sourceLines(client, source, x);
-                            } catch (IOException e) {
-                                throw new RuntimeException(e);
-                            }
+                        .flatMap(file -> {
+                            var source = parser.parse(file.getPrefix());
+                            return sourceLines(client, file)
+                                    .map(line -> new RawRecordLine(source, line.getKey(), line.getValue()));
+
                         })
                         .skip(offset == null ? 0 : offset.offset());
     }
 
-    private static Stream<RawSourceRecord> sourceLines(AmazonS3 client, SourceFile source, S3Location current)
-            throws IOException {
+    private static Stream<Pair<S3Offset, String>> sourceLines(AmazonS3 client, S3Location current) {
         final var response = client.getObject(current.getBucketName(), current.getPrefix());
 
-        var lineIterator = new LineIterator(new BufferedReader(new InputStreamReader(new GZIPInputStream(response.getObjectContent()))));
-        var countedStream = StreamUtils.counting(1, lineIterator);
+        try {
+            var lineIterator = new LineIterator(new BufferedReader(new InputStreamReader(new GZIPInputStream(response.getObjectContent()))));
+            var countedStream = StreamUtils.counting(1, lineIterator);
 
-        return countedStream
-                .map(line -> {
-                    var offset = line.isLast()
-                            ? new S3Offset(current.getPrefix(), Integer.MAX_VALUE)
-                            : new S3Offset(current.getPrefix(), line.itemNumber());
-                    return new RawSourceRecord(source, offset, line.item());
-                });
+            return countedStream
+                    .map(line -> {
+                        var offset = line.isLast()
+                                ? new S3Offset(current.getPrefix(), Integer.MAX_VALUE)
+                                : new S3Offset(current.getPrefix(), line.itemNumber());
+                        return Pair.of(offset, line.item());
+                    });
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
     }
 
     public static Stream<S3Location> streamFiles(

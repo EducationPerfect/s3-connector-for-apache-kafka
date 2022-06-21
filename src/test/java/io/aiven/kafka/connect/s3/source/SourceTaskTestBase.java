@@ -184,11 +184,11 @@ public abstract class SourceTaskTestBase {
                 .collect(Collectors.joining("\n"));
     }
 
-    protected JsonRecordParser.RecordLine createLine(Long offset) {
-        var header = new JsonRecordParser.RecordHeader<>("source-offset", offset);
-        var headers = new JsonRecordParser.RecordHeader[]{header};
+    protected RecordLine createLine(Long offset) {
+        var header = new RecordLine.RecordHeader<>("source-offset", offset);
+        var headers = new RecordLine.RecordHeader[]{header};
 
-        return new JsonRecordParser.RecordLine(
+        return new RecordLine(
                 offset,
                 String.format("test-key-%d", offset),
                 String.format("test-value-%d", offset).getBytes(),

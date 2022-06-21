@@ -23,6 +23,6 @@ public class FilenameParserTest {
         final var parser = new FilenameParser(fileNameTemplate);
         final var result = parser.parse(fileName);
 
-        assertThat(result).isEqualTo(new SourceFile(fileName, topic, partition, Optional.of(offset)));
+        assertThat(result).isEqualTo(new SourceFileInfo(fileName, topic, partition, Optional.of(offset)));
     }
 }

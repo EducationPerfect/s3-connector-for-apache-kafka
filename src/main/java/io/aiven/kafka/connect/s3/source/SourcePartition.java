@@ -28,13 +28,8 @@ public final class SourcePartition {
                     String topicPrefix = t.instance().bindVariable(FilenameTemplateVariable.TOPIC.name, p -> x).render();
                     return listAllPrefixes(client, bucket, topicPrefix).stream();
                 })
-                .map(x -> prefixToPartition(parser, bucket, x))
+                .map(x -> new S3Partition(bucket, x))
                 .toList();
-    }
-
-    private static S3Partition prefixToPartition(FilenameParser parser, String bucket, String prefix) {
-        final var parsed = parser.parse(prefix);
-        return new S3Partition(bucket, prefix);
     }
 
     private static Set<String> listAllPrefixes(AmazonS3 client, String bucket, String prefix) {

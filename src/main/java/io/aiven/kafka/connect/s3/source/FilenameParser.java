@@ -44,10 +44,10 @@ public final class FilenameParser {
         parserRegex = Pattern.compile(regex);
     }
 
-    public SourceFile parse(String fileName) {
+    public SourceFileInfo parse(String fileName) {
         final Matcher matcher = parserRegex.matcher(fileName);
         if (matcher.find()) {
-            return new SourceFile(
+            return new SourceFileInfo(
                     fileName,
                     matcher.group(topicParam.groupName),
                     Integer.parseInt(matcher.group(partitionParam.groupName)),

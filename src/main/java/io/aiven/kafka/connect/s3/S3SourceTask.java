@@ -62,7 +62,7 @@ public class S3SourceTask extends SourceTask {
      */
     private record PartitionStream(
             S3Partition partition,
-            CloseableIterator<List<RawSourceRecord>> remainingBatches) {}
+            CloseableIterator<List<RawRecordLine>> remainingBatches) {}
 
     @Override
     public void start(Map<String, String> props) {
@@ -93,7 +93,7 @@ public class S3SourceTask extends SourceTask {
      *  Gets the batches iterator for a given partition.
      *  If there is no known batches iterator for the partition, a new one will be created.
      */
-    private CloseableIterator<List<RawSourceRecord>> getBatches(PartitionStream partition) {
+    private CloseableIterator<List<RawRecordLine>> getBatches(PartitionStream partition) {
         if (partition.remainingBatches == null) {
             var offset = readStoredOffset(context.offsetStorageReader(), partition.partition());
             var linesStream = S3PartitionLines.readLines(s3Client, partition.partition(), filenameParser, offset, config.getFilesPageSize());
@@ -150,13 +150,13 @@ public class S3SourceTask extends SourceTask {
         LOGGER.info("Stop S3 Source Task");
     }
 
-    private SourceRecord buildSourceRecord(S3Partition partition, RawSourceRecord line) throws JsonProcessingException {
+    private SourceRecord buildSourceRecord(S3Partition partition, RawRecordLine line) throws JsonProcessingException {
         String topic = config.getTopic();
 
         Map<String, Object> sourceOffset = toSourceRecordOffset(line.offset());
         Map<String, Object> sourcePartition = toSourceRecordPartition(partition);
 
-        var record = JsonRecordParser.parse(line.line());
+        var record = RecordLine.parseJson(line.line());
 
         ConnectHeaders headers = new ConnectHeaders();
         for (var headerIndex = 0; headerIndex < record.headers().length; headerIndex++) {
