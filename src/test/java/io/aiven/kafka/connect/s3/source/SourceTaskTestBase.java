@@ -14,12 +14,14 @@ import io.aiven.kafka.connect.common.templating.Template;
 import io.aiven.kafka.connect.s3.S3SourceTask;
 import io.aiven.kafka.connect.s3.testutils.BucketAccessor;
 import io.findify.s3mock.S3Mock;
+import org.apache.kafka.connect.json.JsonConverter;
 import org.apache.kafka.connect.runtime.WorkerSourceTaskContext;
+import org.apache.kafka.connect.source.SourceRecord;
 import org.apache.kafka.connect.source.SourceTaskContext;
 import org.apache.kafka.connect.storage.MemoryOffsetBackingStore;
 import org.apache.kafka.connect.storage.OffsetBackingStore;
 import org.apache.kafka.connect.storage.OffsetStorageReaderImpl;
-import org.apache.kafka.connect.storage.StringConverter;
+import org.apache.kafka.connect.storage.OffsetStorageWriter;
 import org.joda.time.DateTime;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.AfterEach;
@@ -28,6 +30,7 @@ import org.junit.jupiter.api.BeforeEach;
 
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
+import java.util.List;
 import java.util.Map;
 import java.util.Random;
 import java.util.stream.Collectors;
@@ -36,7 +39,7 @@ import java.util.zip.GZIPOutputStream;
 
 import static io.aiven.kafka.connect.common.config.AivenCommonConfig.FILE_NAME_TEMPLATE_CONFIG;
 import static io.aiven.kafka.connect.s3.config.AivenCommonS3Config.*;
-import static io.aiven.kafka.connect.s3.config.S3SourceConfig.TOPIC;
+import static io.aiven.kafka.connect.s3.config.S3SourceConfig.TOPIC_TARGET_CONFIG;
 
 public abstract class SourceTaskTestBase {
     private static final ObjectMapper jsonMapper = new ObjectMapper().registerModule(new JodaModule());
@@ -53,6 +56,8 @@ public abstract class SourceTaskTestBase {
     protected SourceTaskContext sourceTaskContext;
     protected OffsetBackingStore offsetBackingStore;
 
+    protected OffsetStorageWriter offsetWriter;
+
     protected static BucketAccessor testBucketAccessor;
 
     protected S3SourceTask sourceTask;
@@ -67,24 +72,25 @@ public abstract class SourceTaskTestBase {
         s3Api.start();
 
         commonProperties = Map.of(
-                TOPIC, TEST_TOPIC,
+                TOPIC_TARGET_CONFIG, TEST_TOPIC,
                 FILE_NAME_TEMPLATE_CONFIG, filenameTemplate,
-                AWS_ACCESS_KEY_ID, "test_key_id",
-                AWS_SECRET_ACCESS_KEY, "test_secret_key",
-                AWS_S3_BUCKET, TEST_BUCKET,
-                AWS_S3_ENDPOINT, "http://localhost:" + s3Port,
-                AWS_S3_REGION, "ap-southeast-2"
+                AWS_ACCESS_KEY_ID_CONFIG, "test_key_id",
+                AWS_SECRET_ACCESS_KEY_CONFIG, "test_secret_key",
+                AWS_S3_BUCKET_NAME_CONFIG, TEST_BUCKET,
+                AWS_S3_ENDPOINT_CONFIG, "http://localhost:" + s3Port,
+                AWS_S3_REGION_CONFIG, "ap-southeast-2",
+                "schemas.enable", "false"
         );
 
         final AmazonS3ClientBuilder builder = AmazonS3ClientBuilder.standard();
         final BasicAWSCredentials awsCreds = new BasicAWSCredentials(
-                commonProperties.get(AWS_ACCESS_KEY_ID),
-                commonProperties.get(AWS_SECRET_ACCESS_KEY)
+                commonProperties.get(AWS_ACCESS_KEY_ID_CONFIG),
+                commonProperties.get(AWS_SECRET_ACCESS_KEY_CONFIG)
         );
         builder.withCredentials(new AWSStaticCredentialsProvider(awsCreds));
         builder.withEndpointConfiguration(new AwsClientBuilder.EndpointConfiguration(
-                commonProperties.get(AWS_S3_ENDPOINT),
-                commonProperties.get(AWS_S3_REGION)
+                commonProperties.get(AWS_S3_ENDPOINT_CONFIG),
+                commonProperties.get(AWS_S3_REGION_CONFIG)
         ));
         builder.withPathStyleAccessEnabled(true);
 
@@ -95,17 +101,37 @@ public abstract class SourceTaskTestBase {
 
     @AfterAll
     public static void tearDownClass() {
-
         s3Api.stop();
+    }
+
+    protected final List<SourceRecord> poll() throws Exception {
+        var results = sourceTask.poll();
+        if (!results.isEmpty()) {
+            results.forEach(r -> offsetWriter.offset(r.sourcePartition(), r.sourceOffset()));
+            offsetWriter.beginFlush();
+            offsetWriter.doFlush((err, res) -> {
+                if (err != null) System.out.println("ERR: " + err);
+            }).get();
+        }
+        return results;
+    }
+
+    protected final List<SourceRecord> pollNoCommitOffsets() throws Exception {
+        return sourceTask.poll();
     }
 
     @BeforeEach
     public void setUp() {
         testBucketAccessor = new BucketAccessor(s3Client, TEST_BUCKET);
         testBucketAccessor.createBucket();
+        var jsonv = new JsonConverter();
+        jsonv.configure(commonProperties, false);
 
         offsetBackingStore = new MemoryOffsetBackingStore();
-        var offsetReader = new OffsetStorageReaderImpl(offsetBackingStore, "test", new StringConverter(), new StringConverter());
+
+        offsetWriter = new OffsetStorageWriter(offsetBackingStore, "test", jsonv, jsonv);
+        var offsetReader = new OffsetStorageReaderImpl(offsetBackingStore, "test", jsonv, jsonv);
+
         sourceTaskContext = new WorkerSourceTaskContext(offsetReader);
         offsetBackingStore.start();
 

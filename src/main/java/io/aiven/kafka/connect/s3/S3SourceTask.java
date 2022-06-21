@@ -19,10 +19,10 @@ import java.util.*;
 
 public class S3SourceTask extends SourceTask {
     private static final Logger LOGGER = LoggerFactory.getLogger(S3SourceTask.class);
-    private static final String LAST_PROCESSED_OBJECT_KEY = "filename.last";
-    private static final String LINE_NUMBER = "line.number";
-    private static final String BUCKET_NAME = "bucket.name";
-    private static final String PARTITION_KEY = "partition.key";
+    private static final String OFFSET_FILENAME = "offset.filename";
+    private static final String OFFSET_LINE_NUMBER = "offset.line.number";
+    private static final String PARTITION_BUCKET_NAME = "partition.bucket.name";
+    private static final String PARTITION_PREFIX = "partition.prefix";
 
     private FilenameParser filenameParser;
 
@@ -96,8 +96,8 @@ public class S3SourceTask extends SourceTask {
     private CloseableIterator<List<RawSourceRecord>> getBatches(PartitionStream partition) {
         if (partition.remainingBatches == null) {
             var offset = readStoredOffset(context.offsetStorageReader(), partition.partition());
-            var linesStream = S3PartitionLines.readLines(s3Client, partition.partition(), filenameParser, offset, 10);
-            var batches = StreamUtils.batching(100, linesStream);
+            var linesStream = S3PartitionLines.readLines(s3Client, partition.partition(), filenameParser, offset, config.getFilesPageSize());
+            var batches = StreamUtils.batching(config.getBatchSize(), linesStream);
             return StreamUtils.asClosableIterator(batches);
         } else {
             return partition.remainingBatches;
@@ -175,15 +175,15 @@ public class S3SourceTask extends SourceTask {
 
     private Map<String, Object> toSourceRecordOffset(S3Offset offset) {
         return Map.of(
-                LAST_PROCESSED_OBJECT_KEY, offset.filename(),
-                LINE_NUMBER, offset.offset()
+                OFFSET_FILENAME, offset.filename(),
+                OFFSET_LINE_NUMBER, offset.offset()
         );
     }
 
     private static Map<String, Object> toSourceRecordPartition(S3Partition partition) {
         return Map.of(
-                BUCKET_NAME, partition.bucket(),
-                PARTITION_KEY, partition.prefix()
+                PARTITION_BUCKET_NAME, partition.bucket(),
+                PARTITION_PREFIX, partition.prefix()
         );
     }
 
@@ -193,8 +193,8 @@ public class S3SourceTask extends SourceTask {
 
         if (mOffset == null) { return null; }
         else {
-            final var lastProcessed = mOffset.get(LAST_PROCESSED_OBJECT_KEY);
-            final var lineNumber = mOffset.get(LINE_NUMBER);
+            final var lastProcessed = mOffset.get(OFFSET_FILENAME);
+            final var lineNumber = mOffset.get(OFFSET_LINE_NUMBER);
 
             return (lastProcessed != null && lineNumber != null) ? new S3Offset((String) lastProcessed, (Long) lineNumber) : null;
         }

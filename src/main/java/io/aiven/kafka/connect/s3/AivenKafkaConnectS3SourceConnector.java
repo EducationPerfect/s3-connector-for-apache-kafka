@@ -5,7 +5,6 @@ import io.aiven.kafka.connect.s3.config.S3SinkConfig;
 import io.aiven.kafka.connect.s3.config.S3SourceConfig;
 import io.aiven.kafka.connect.s3.source.S3Partition;
 import io.aiven.kafka.connect.s3.source.SourcePartition;
-import io.aiven.kafka.connect.s3.utils.IteratorUtils;
 import io.aiven.kafka.connect.s3.utils.StreamUtils;
 import org.apache.kafka.common.config.ConfigDef;
 import org.apache.kafka.connect.connector.Task;
@@ -14,7 +13,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.*;
-import java.util.stream.Collectors;
 
 public class AivenKafkaConnectS3SourceConnector extends SourceConnector {
     private static final Logger LOGGER = LoggerFactory.getLogger(AivenKafkaConnectS3SourceConnector.class);
@@ -57,7 +55,7 @@ public class AivenKafkaConnectS3SourceConnector extends SourceConnector {
                 .map(xs -> String.join(",", xs))
                 .map(x -> {
                     Map<String, String> cfg = new HashMap<>(configProperties);
-                    cfg.put(S3SourceConfig.PARTITION_PREFIX, x);
+                    cfg.put(S3SourceConfig.PARTITION_PREFIXES_CONFIG, x);
                     return cfg;
                 });
 

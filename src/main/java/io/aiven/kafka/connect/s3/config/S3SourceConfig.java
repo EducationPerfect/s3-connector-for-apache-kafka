@@ -7,27 +7,40 @@ import java.util.Map;
 public class S3SourceConfig extends AivenCommonS3Config {
     /***
      * Configuration information:
-     * `topic` - Destination topic to push to
+     * `topic.target` - Destination topic to push to
      * `topic.source` - Source topic which is being pulled from
      * `partition.prefixes` - Prefixes for S3 files in a given partition. comma separated.
      */
 
-    public static final String GROUP_S3Config = "S3Config";
+    public static final String BATCH_SIZE_CONFIG = "batch.size";
 
-    public static final String TOPIC_SOURCE = "topic.source";
-    public static final String PARTITION_PREFIX = "partition.prefixes";
-    public static final String TOPIC = "topic";
+    public static final String FILES_PAGE_SIZE_CONFIG = "files.page.size";
+
+    public static final String GROUP_S3Config = "S3Config";
+    public static final String GROUP_Connector = "Connector";
+
+    public static final String TOPIC_SOURCE_CONFIG = "topic.source";
+    public static final String PARTITION_PREFIXES_CONFIG = "partition.prefixes";
+    public static final String TOPIC_TARGET_CONFIG = "topic.target";
 
     public String getTopicSource() {
-        return getString(TOPIC_SOURCE);
+        return getString(TOPIC_SOURCE_CONFIG);
     }
 
     public String getTopic() {
-        return getString(TOPIC);
+        return getString(TOPIC_TARGET_CONFIG);
     }
 
     public String[] getPartitionPrefixes() {
-        return getString(PARTITION_PREFIX).split(",");
+        return getString(PARTITION_PREFIXES_CONFIG).split(",");
+    }
+
+    public int getBatchSize() {
+        return getInt(BATCH_SIZE_CONFIG);
+    }
+
+    public int getFilesPageSize() {
+        return getInt(FILES_PAGE_SIZE_CONFIG);
     }
 
     public S3SourceConfig(Map<String, String> properties) {
@@ -45,21 +58,53 @@ public class S3SourceConfig extends AivenCommonS3Config {
         addKafkaBackoffPolicy(configDef);
         addS3RetryPolicies(configDef);
         addS3SourceConfigGroup(configDef);
-        addTargetTopicGroup(configDef);
+        addConnectorConfiguration(configDef);
         return configDef;
     }
 
-    protected static void addTargetTopicGroup(final ConfigDef configDef) {
-        configDef.define(TOPIC,
+    protected static void addConnectorConfiguration(final ConfigDef configDef) {
+        int groupOrder = 0;
+        configDef.define(
+                TOPIC_TARGET_CONFIG,
                 ConfigDef.Type.STRING,
+                ConfigDef.NO_DEFAULT_VALUE,
+                new ConfigDef.NonEmptyString(),
                 ConfigDef.Importance.HIGH,
-                "Topic to push to");
+                "Topic to push to",
+                GROUP_Connector,
+                groupOrder++,
+                ConfigDef.Width.NONE,
+                TOPIC_SOURCE_CONFIG);
+
+        configDef.define(
+                BATCH_SIZE_CONFIG,
+                ConfigDef.Type.INT,
+                1000,
+                ConfigDef.Range.between(1, 20000),
+                ConfigDef.Importance.HIGH,
+                "The number of records to process when writing to Kafka in a single batch.",
+                GROUP_Connector,
+                groupOrder++,
+                ConfigDef.Width.NONE,
+                BATCH_SIZE_CONFIG);
+
+        configDef.define(
+                FILES_PAGE_SIZE_CONFIG,
+                ConfigDef.Type.INT,
+                10,
+                ConfigDef.Range.between(1, 200),
+                ConfigDef.Importance.MEDIUM,
+                "The number of files per partition to process as one iteration before moving to other partitions.",
+                GROUP_Connector,
+                groupOrder++,
+                ConfigDef.Width.NONE,
+                FILES_PAGE_SIZE_CONFIG);
     }
 
     protected static void addS3SourceConfigGroup(final ConfigDef configDef) {
         int s3ConfigGroupCounter = 0;
         configDef.define(
-                TOPIC_SOURCE,
+                TOPIC_SOURCE_CONFIG,
                 ConfigDef.Type.STRING,
                 null,
                 new ConfigDef.NonEmptyString(),
@@ -68,11 +113,11 @@ public class S3SourceConfig extends AivenCommonS3Config {
                 GROUP_S3Config,
                 s3ConfigGroupCounter++,
                 ConfigDef.Width.NONE,
-                TOPIC_SOURCE
+                TOPIC_SOURCE_CONFIG
         );
 
         configDef.define(
-                PARTITION_PREFIX,
+                PARTITION_PREFIXES_CONFIG,
                 ConfigDef.Type.STRING,
                 null,
                 new ConfigDef.NonEmptyString(),
@@ -81,7 +126,7 @@ public class S3SourceConfig extends AivenCommonS3Config {
                 GROUP_S3Config,
                 s3ConfigGroupCounter++,
                 ConfigDef.Width.NONE,
-                PARTITION_PREFIX
+                PARTITION_PREFIXES_CONFIG
         );
 
     }
