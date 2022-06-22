@@ -23,11 +23,14 @@ public final class S3PartitionLines {
             int maxFiles) {
         final var previousKey = offset == null ? null : offset.filename();
 
-        // If the current file is not yet process, start with it
-        Stream<S3Location> prefixStream =
-                (offset != null && previousKey != null && offset.offset() != Integer.MAX_VALUE)
-                        ? Stream.of(new S3Location().withBucketName(partition.bucket()).withPrefix(previousKey))
-                        : Stream.empty();
+        var skipLines = 0L;
+        Stream<S3Location> prefixStream = Stream.of();
+
+        // If the current file is not yet fully process, start with it
+        if (offset != null && previousKey != null && offset.offset() != Integer.MAX_VALUE) {
+            skipLines = offset.offset();
+            prefixStream = Stream.of(new S3Location().withBucketName(partition.bucket()).withPrefix(previousKey));
+        }
 
         var filesStream = Stream.concat(prefixStream, streamFiles(client, partition.bucket(), partition.prefix(), previousKey));
 
@@ -40,7 +43,7 @@ public final class S3PartitionLines {
                                     .map(line -> new RawRecordLine(source, line.getKey(), line.getValue()));
 
                         })
-                        .skip(offset == null ? 0 : offset.offset());
+                        .skip(skipLines);
     }
 
     private static Stream<Pair<S3Offset, String>> sourceLines(AmazonS3 client, S3Location current) {
@@ -77,7 +80,7 @@ public final class S3PartitionLines {
 
         var response = client.listObjectsV2(request);
 
-        return Stream
+        var resultStream = Stream
                 .iterate(response,
                         Objects::nonNull,
                         r -> r.getNextContinuationToken() == null ? null : client.listObjectsV2(request.withContinuationToken(r.getNextContinuationToken()))
@@ -85,5 +88,16 @@ public final class S3PartitionLines {
                 .flatMap(r -> r.getObjectSummaries().stream())
                 .map(r -> new S3Location().withBucketName(bucket).withPrefix(r.getKey()));
 
+//        /* --------------------------------------------------------------------- *
+//         * This is a hack for "fake" S3Mock which doesn't support `withAfterKey` *
+//         * Only use for unit testing! It will break production!                  *
+//         * --------------------------------------------------------------------- */
+//        if (afterKey != null) {
+//            return resultStream
+//                    .dropWhile(x -> !x.getPrefix().equals(afterKey))
+//                    .skip(1);
+//        }
+
+        return resultStream;
     }
 }

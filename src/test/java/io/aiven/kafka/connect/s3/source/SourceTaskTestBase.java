@@ -139,6 +139,12 @@ public abstract class SourceTaskTestBase {
         sourceTask.initialize(sourceTaskContext);
     }
 
+    public final void resetTask() {
+        sourceTask.stop();
+        sourceTask = new S3SourceTask();
+        sourceTask.initialize(sourceTaskContext);
+    }
+
     @AfterEach
     public void tearDown() {
         sourceTask.stop();

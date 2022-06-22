@@ -150,12 +150,35 @@ public final class S3SourceTaskTest extends SourceTaskTestBase {
         var batch_2 = poll();
         assertThatCollection(batch_2).isEmpty();
 
-
         createBackupFile(TEST_TOPIC, 0, 10L, 10);
 
         // Expect data from 2nd partition
         var batch_3 = poll();
         assertThatCollection(batch_3).hasSize(10);
         assertThatCollection(batch_3).allMatch(r -> r.kafkaPartition() == 0);
+    }
+
+    @Test
+    @Disabled("S3Mock doesn't support listing objects with 'withStartAfter' which if required for this test")
+    public void should_continue_after_restart() throws Exception {
+        createBackupFile(TEST_TOPIC, 0, 0L, 10);
+
+        var partitionPrefixes = String.format("aiven/%1$s/partition=0/", TEST_TOPIC);
+
+        var taskProperties = new HashMap<>(commonProperties);
+        taskProperties.put(S3SourceConfig.PARTITION_PREFIXES_CONFIG, partitionPrefixes);
+        taskProperties.put(S3SourceConfig.BATCH_SIZE_CONFIG, "8");
+
+        sourceTask.start(taskProperties);
+
+        var batch_1 = poll();
+        assertThatCollection(batch_1).hasSize(8);
+
+        // simulate crash and restart
+        resetTask();
+        sourceTask.start(taskProperties);
+
+        var batch_2 = poll();
+        assertThatCollection(batch_2).hasSize(2);
     }
 }
