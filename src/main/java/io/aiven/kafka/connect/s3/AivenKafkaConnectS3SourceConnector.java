@@ -12,6 +12,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.*;
+import java.util.stream.Collectors;
 
 public class AivenKafkaConnectS3SourceConnector extends SourceConnector {
     private static final Logger LOGGER = LoggerFactory.getLogger(AivenKafkaConnectS3SourceConnector.class);
@@ -49,16 +50,16 @@ public class AivenKafkaConnectS3SourceConnector extends SourceConnector {
         int batchSize = (int) Math.ceil((double) partitions.size() / maxTasks);
 
         var prefixes = partitions.stream().map(S3Partition::prefix);
-        var batched = StreamUtils
+        return StreamUtils
                 .batching(batchSize, prefixes)
                 .map(xs -> String.join(",", xs))
                 .map(x -> {
                     Map<String, String> cfg = new HashMap<>(configProperties);
                     cfg.put(S3SourceConfig.PARTITION_PREFIXES_CONFIG, x);
                     return cfg;
-                });
+                })
+                .collect(Collectors.toList());
 
-        return batched.toList();
     }
 
     @Override

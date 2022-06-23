@@ -7,6 +7,8 @@ import io.aiven.kafka.connect.common.config.FilenameTemplateVariable;
 import io.aiven.kafka.connect.common.templating.Template;
 
 import java.util.*;
+import java.util.stream.Collectors;
+
 import org.apache.commons.io.*;
 
 public final class SourcePartition {
@@ -29,7 +31,7 @@ public final class SourcePartition {
                     return listAllPrefixes(client, bucket, topicPrefix).stream();
                 })
                 .map(x -> new S3Partition(bucket, x))
-                .toList();
+                .collect(Collectors.toList());
     }
 
     private static Set<String> listAllPrefixes(AmazonS3 client, String bucket, String prefix) {
