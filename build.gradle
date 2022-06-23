@@ -43,8 +43,8 @@ plugins {
 group = "io.aiven"
 
 java {
-    sourceCompatibility = JavaVersion.VERSION_16
-    targetCompatibility = JavaVersion.VERSION_16
+    sourceCompatibility = JavaVersion.VERSION_11
+    targetCompatibility = JavaVersion.VERSION_11
 
     withJavadocJar()
     withSourcesJar()
@@ -149,6 +149,7 @@ dependencies {
     testImplementation "org.junit.jupiter:junit-jupiter:$junitVersion"
 
     testImplementation 'net.jqwik:jqwik:1.6.5'
+    testImplementation 'net.jqwik:jqwik-time:1.6.5'
 
     testImplementation "io.findify:s3mock_2.11:0.2.6"
 

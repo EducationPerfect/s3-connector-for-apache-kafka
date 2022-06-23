@@ -55,10 +55,10 @@ public final class S3PartitionLines {
 
             return countedStream
                     .map(line -> {
-                        var offset = line.isLast()
+                        var offset = line.isLast
                                 ? new S3Offset(current.getPrefix(), Integer.MAX_VALUE)
-                                : new S3Offset(current.getPrefix(), line.itemNumber());
-                        return Pair.of(offset, line.item());
+                                : new S3Offset(current.getPrefix(), line.itemNumber);
+                        return Pair.of(offset, line.item);
                     });
         } catch (IOException e) {
             throw new RuntimeException(e);

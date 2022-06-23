@@ -1,7 +1,6 @@
 package io.aiven.kafka.connect.s3;
 
 import com.amazonaws.services.s3.AmazonS3;
-import io.aiven.kafka.connect.s3.config.S3SinkConfig;
 import io.aiven.kafka.connect.s3.config.S3SourceConfig;
 import io.aiven.kafka.connect.s3.source.S3Partition;
 import io.aiven.kafka.connect.s3.source.SourcePartition;
@@ -20,7 +19,7 @@ public class AivenKafkaConnectS3SourceConnector extends SourceConnector {
     private Map<String, String> configProperties;
 
     @Override
-    public ConfigDef config() { return S3SinkConfig.configDef(); }
+    public ConfigDef config() { return S3SourceConfig.configDef(); }
 
     @Override
     public String version() {

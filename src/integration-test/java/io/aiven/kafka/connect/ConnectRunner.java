@@ -38,7 +38,7 @@ import org.apache.kafka.connect.util.FutureCallback;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-final class ConnectRunner {
+public final class ConnectRunner {
     private static final Logger log = LoggerFactory.getLogger(ConnectRunner.class);
 
     private final File pluginDir;
@@ -56,7 +56,7 @@ final class ConnectRunner {
         this.offsetFlushInterval = offsetFlushIntervalMs;
     }
 
-    void start() {
+    public void start() {
         final Map<String, String> workerProps = new HashMap<>();
         workerProps.put("bootstrap.servers", bootstrapServers);
 
@@ -93,7 +93,7 @@ final class ConnectRunner {
         connect.start();
     }
 
-    void createConnector(final Map<String, String> config) throws ExecutionException, InterruptedException {
+    public void createConnector(final Map<String, String> config) throws ExecutionException, InterruptedException {
         assert herder != null;
 
         final FutureCallback<Herder.Created<ConnectorInfo>> cb = new FutureCallback<>(
@@ -116,11 +116,11 @@ final class ConnectRunner {
         assert connectorInfoCreated.created();
     }
 
-    void stop() {
+    public void stop() {
         connect.stop();
     }
 
-    void awaitStop() {
+    public void awaitStop() {
         connect.awaitStop();
     }
 }

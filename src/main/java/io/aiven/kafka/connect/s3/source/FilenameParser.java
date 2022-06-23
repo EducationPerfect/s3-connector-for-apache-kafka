@@ -7,6 +7,7 @@ import java.util.Optional;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
+
 public final class FilenameParser {
     public final String fileNameTemplate;
 
@@ -15,18 +16,6 @@ public final class FilenameParser {
     private static final Param offsetParam = Param.of(FilenameTemplateVariable.START_OFFSET.name, "\\\\d+");
 
     private final Pattern parserRegex;
-
-    private record Param(String name, String groupName, String searchToken, String groupToken, String groupRefToken) {
-        public static Param of(String name, String expression) {
-            final String groupName = name.replaceAll("[^a-zA-Z0-9]", "");
-            return new Param(
-                    name,
-                    groupName,
-                    "\\{\\{" + name + "(:.+?)?\\}\\}",
-                    "(?<" + groupName + ">" + expression + ")",
-                    "\\\\k<" + groupName + ">");
-        }
-    }
 
     public FilenameParser(String fileNameTemplate) {
         this.fileNameTemplate = fileNameTemplate;
@@ -61,6 +50,32 @@ public final class FilenameParser {
             return Optional.ofNullable(matcher.group(groupName));
         } catch (IllegalArgumentException ex) {
             return Optional.empty();
+        }
+    }
+
+    static final class Param {
+        private final String name;
+        private final String groupName;
+        private final String searchToken;
+        private final String groupToken;
+        private final String groupRefToken;
+
+        public Param(String name, String groupName, String searchToken, String groupToken, String groupRefToken) {
+            this.name = name;
+            this.groupName = groupName;
+            this.searchToken = searchToken;
+            this.groupToken = groupToken;
+            this.groupRefToken = groupRefToken;
+        }
+
+        public static Param of(String name, String expression) {
+            final String groupName = name.replaceAll("[^a-zA-Z0-9]", "");
+            return new Param(
+                    name,
+                    groupName,
+                    "\\{\\{" + name + "(:.+?)?\\}\\}",
+                    "(?<" + groupName + ">" + expression + ")",
+                    "\\\\k<" + groupName + ">");
         }
     }
 }

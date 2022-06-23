@@ -16,6 +16,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.*;
+import java.util.stream.Collectors;
 
 public class S3SourceTask extends SourceTask {
     private static final Logger LOGGER = LoggerFactory.getLogger(S3SourceTask.class);
@@ -43,27 +44,6 @@ public class S3SourceTask extends SourceTask {
         return Version.VERSION;
     }
 
-    /**
-     * When handling a partition, we read data from its files and send it to the Kafka topic.
-     * Connector's `poll()` method requires returning a batch for each `poll` invocation.
-     * A batch per file would be a nice approximation, but it may not work or may not be
-     * efficient in these conditions:
-     *
-     * 1. A file is too large to fit in a single batch.
-     * 2. Files are small, and doing lots of "listObjects" is expensive and suboptimal.
-     *
-     * Because of that, for each partition we open a "page" of several files, which are then
-     * transparently represented as a sequence of batches.
-     *
-     * The idea is that the partition remains "active" until it has "remaining batches" associated with it,
-     * and when there are no more batches, the next is picked up for handling.
-     *
-     * The partitions then are circled in a queue: process a "page" for one partition, then for another one, etc.
-     */
-    private record PartitionStream(
-            S3Partition partition,
-            CloseableIterator<List<RawRecordLine>> remainingBatches) {}
-
     @Override
     public void start(Map<String, String> props) {
         Objects.requireNonNull(props, "props hasn't been set");
@@ -79,7 +59,7 @@ public class S3SourceTask extends SourceTask {
         var allPartitions = Arrays
                 .stream(config.getPartitionPrefixes())
                 .map(s -> new PartitionStream(new S3Partition(config.getAwsS3BucketName(), s), null))
-                .toList();
+                .collect(Collectors.toList());
 
         // Here is a queue in which partitions will be roted:
         // When we handle a batch and the partition has more batches to process,
@@ -95,8 +75,8 @@ public class S3SourceTask extends SourceTask {
      */
     private CloseableIterator<List<RawRecordLine>> getBatches(PartitionStream partition) {
         if (partition.remainingBatches == null) {
-            var offset = readStoredOffset(context.offsetStorageReader(), partition.partition());
-            var linesStream = S3PartitionLines.readLines(s3Client, partition.partition(), filenameParser, offset, config.getFilesPageSize());
+            var offset = readStoredOffset(context.offsetStorageReader(), partition.partition);
+            var linesStream = S3PartitionLines.readLines(s3Client, partition.partition, filenameParser, offset, config.getFilesPageSize());
             var batches = StreamUtils.batching(config.getBatchSize(), linesStream);
             return StreamUtils.asClosableIterator(batches);
         } else {
@@ -110,35 +90,35 @@ public class S3SourceTask extends SourceTask {
         Objects.requireNonNull(this.context.offsetStorageReader(), "offsetStorageReader hasn't been set");
 
         // take next partition from the top of the queue and put it to the back so that others will have turns
-        var partition = partitionsQueue.poll();
-        Objects.requireNonNull(partition, "Panic: partitionsQueue is empty");
+        var current = partitionsQueue.poll();
+        Objects.requireNonNull(current, "Panic: partitionsQueue is empty");
 
-        var remainingBatches = getBatches(partition);
+        var remainingBatches = getBatches(current);
 
         var batch = IteratorUtils
                 .getNext(remainingBatches, List.of())
                 .stream()
                 .map(r -> {
                     try {
-                        return buildSourceRecord(partition.partition, r);
+                        return buildSourceRecord(current.partition, r);
                     } catch (JsonProcessingException ex) {
                         throw new RuntimeException(ex.getMessage());
                     }
                 })
-                .toList();
+                .collect(Collectors.toList());
 
         // if there are no more batches, then we put the partition back to the FRONT of the queue
         // so that we keep iterating on it until it is finished.
         // Otherwise, we put it to the BACK of the queue, so that others will have turns.
         if (remainingBatches.hasNext()) {
-            partitionsQueue.addFirst(new PartitionStream(partition.partition(), remainingBatches));
+            partitionsQueue.addFirst(new PartitionStream(current.partition, remainingBatches));
         } else {
             try {
                 remainingBatches.close();
             } catch (Exception e) {
                 throw new InterruptedException(e.getMessage());
             }
-            partitionsQueue.addLast(new PartitionStream(partition.partition(), null));
+            partitionsQueue.addLast(new PartitionStream(current.partition, null));
         }
 
         return batch;
@@ -161,7 +141,7 @@ public class S3SourceTask extends SourceTask {
         ConnectHeaders headers = new ConnectHeaders();
         for (var headerIndex = 0; headerIndex < record.headers().length; headerIndex++) {
             var header = record.headers()[headerIndex];
-            headers.add(header.key(), new SchemaAndValue(null, header.value()));
+            headers.add(header.key, new SchemaAndValue(null, header.value));
         }
 
         return new SourceRecord(
