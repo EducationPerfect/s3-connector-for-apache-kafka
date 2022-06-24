@@ -49,17 +49,22 @@ public class AivenKafkaConnectS3SourceConnector extends SourceConnector {
 
         int batchSize = (int) Math.ceil((double) partitions.size() / maxTasks);
 
-        var prefixes = partitions.stream().map(S3Partition::prefix);
-        return StreamUtils
-                .batching(batchSize, prefixes)
-                .map(xs -> String.join(",", xs))
-                .map(x -> {
-                    Map<String, String> cfg = new HashMap<>(configProperties);
-                    cfg.put(S3SourceConfig.PARTITION_PREFIXES_CONFIG, x);
-                    return cfg;
-                })
-                .collect(Collectors.toList());
+        LOGGER.info("Found {} partitions, will initialise {} tasks", partitions.size(), batchSize);
 
+        var prefixes = partitions.stream().map(S3Partition::prefix);
+        var taskConfigs =
+                StreamUtils
+                        .batching(batchSize, prefixes)
+                        .map(xs -> String.join(",", xs))
+                        .map(x -> {
+                            Map<String, String> cfg = new HashMap<>(configProperties);
+                            cfg.put(S3SourceConfig.PARTITION_PREFIXES_CONFIG, x);
+                            return cfg;
+                        })
+                        .collect(Collectors.toList());
+
+        LOGGER.info("Created {} task configs", taskConfigs.size());
+        return taskConfigs;
     }
 
     @Override

@@ -4,7 +4,7 @@ import com.amazonaws.services.s3.AmazonS3;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import io.aiven.kafka.connect.s3.config.S3SourceConfig;
 import io.aiven.kafka.connect.s3.source.*;
-import io.aiven.kafka.connect.s3.utils.CloseableIterator;
+import io.aiven.kafka.connect.s3.utils.CollectionUtils;
 import io.aiven.kafka.connect.s3.utils.IteratorUtils;
 import io.aiven.kafka.connect.s3.utils.StreamUtils;
 import org.apache.kafka.connect.data.SchemaAndValue;
@@ -58,7 +58,11 @@ public class S3SourceTask extends SourceTask {
         // Initialise all partition streams, each with no "remaining batches", of course
         var allPartitions = Arrays
                 .stream(config.getPartitionPrefixes())
-                .map(s -> new PartitionStream(new S3Partition(config.getAwsS3BucketName(), s), null))
+                .map(s -> {
+                    var partition = new S3Partition(config.getAwsS3BucketName(), s);
+                    var offset = readStoredOffset(context.offsetStorageReader(), partition);
+                    return new PartitionStream(partition, offset, null);
+                })
                 .collect(Collectors.toList());
 
         // Here is a queue in which partitions will be roted:
@@ -73,14 +77,13 @@ public class S3SourceTask extends SourceTask {
      *  Gets the batches iterator for a given partition.
      *  If there is no known batches iterator for the partition, a new one will be created.
      */
-    private CloseableIterator<List<RawRecordLine>> getBatches(PartitionStream partition) {
+    private PartitionStream refreshBatches(PartitionStream partition) {
         if (partition.remainingBatches == null) {
-            var offset = readStoredOffset(context.offsetStorageReader(), partition.partition);
-            var linesStream = S3PartitionLines.readLines(s3Client, partition.partition, filenameParser, offset, config.getFilesPageSize());
+            var linesStream = S3PartitionLines.readLines(s3Client, partition.partition, filenameParser, partition.lastKnownOffset, config.getFilesPageSize());
             var batches = StreamUtils.batching(config.getBatchSize(), linesStream);
-            return StreamUtils.asClosableIterator(batches);
+            return partition.withBatches(StreamUtils.asClosableIterator(batches));
         } else {
-            return partition.remainingBatches;
+            return partition;
         }
     }
 
@@ -90,13 +93,19 @@ public class S3SourceTask extends SourceTask {
         Objects.requireNonNull(this.context.offsetStorageReader(), "offsetStorageReader hasn't been set");
 
         // take next partition from the top of the queue and put it to the back so that others will have turns
-        var current = partitionsQueue.poll();
-        Objects.requireNonNull(current, "Panic: partitionsQueue is empty");
+        var partitionToProcess = partitionsQueue.poll();
+        Objects.requireNonNull(partitionToProcess, "Panic: partitionsQueue is empty");
 
-        var remainingBatches = getBatches(current);
+        var current = refreshBatches(partitionToProcess);
 
-        var batch = IteratorUtils
-                .getNext(remainingBatches, List.of())
+        var nextBatch = IteratorUtils.getNext(current.remainingBatches, List.of());
+        var lastOffset = CollectionUtils.last(nextBatch).map(RawRecordLine::offset).orElse(current.lastKnownOffset);
+
+        if (!nextBatch.isEmpty()) {
+            LOGGER.info("Processing batch of {}, last offset: {}", nextBatch.size(), lastOffset);
+        }
+
+        var sourceRecords = nextBatch
                 .stream()
                 .map(r -> {
                     try {
@@ -110,18 +119,18 @@ public class S3SourceTask extends SourceTask {
         // if there are no more batches, then we put the partition back to the FRONT of the queue
         // so that we keep iterating on it until it is finished.
         // Otherwise, we put it to the BACK of the queue, so that others will have turns.
-        if (remainingBatches.hasNext()) {
-            partitionsQueue.addFirst(new PartitionStream(current.partition, remainingBatches));
+        if (current.remainingBatches.hasNext()) {
+            partitionsQueue.addFirst(current.withLastKnownOffset(lastOffset));
         } else {
             try {
-                remainingBatches.close();
+                current.remainingBatches.close();
             } catch (Exception e) {
                 throw new InterruptedException(e.getMessage());
             }
-            partitionsQueue.addLast(new PartitionStream(current.partition, null));
+            partitionsQueue.addLast(current.withLastKnownOffset(lastOffset).withBatches(null));
         }
 
-        return batch;
+        return sourceRecords;
     }
 
     @Override
@@ -178,7 +187,7 @@ public class S3SourceTask extends SourceTask {
             final var lastProcessed = mOffset.get(OFFSET_FILENAME);
             final var lineNumber = mOffset.get(OFFSET_LINE_NUMBER);
 
-            return (lastProcessed != null && lineNumber != null) ? new S3Offset((String) lastProcessed, (Long) lineNumber) : null;
+            return (lastProcessed != null && lineNumber != null) ? new S3Offset((String) lastProcessed, (long)lineNumber) : null;
         }
     }
 }

@@ -3,9 +3,12 @@ package io.aiven.kafka.connect.s3.source;
 import com.amazonaws.services.s3.AmazonS3;
 import com.amazonaws.services.s3.model.ListObjectsV2Request;
 import com.amazonaws.services.s3.model.S3Location;
+import io.aiven.kafka.connect.s3.S3SourceTask;
 import io.aiven.kafka.connect.s3.utils.StreamUtils;
 import org.apache.commons.io.LineIterator;
 import org.apache.commons.lang3.tuple.Pair;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.io.BufferedReader;
 import java.io.IOException;
@@ -15,6 +18,8 @@ import java.util.stream.Stream;
 import java.util.zip.GZIPInputStream;
 
 public final class S3PartitionLines {
+    private static final Logger LOGGER = LoggerFactory.getLogger(S3SourceTask.class);
+
     public static Stream<RawRecordLine> readLines(
             AmazonS3 client,
             S3Partition partition,
@@ -27,7 +32,8 @@ public final class S3PartitionLines {
         Stream<S3Location> prefixStream = Stream.of();
 
         // If the current file is not yet fully process, start with it
-        if (offset != null && previousKey != null && offset.offset() != Integer.MAX_VALUE) {
+        if (offset != null && offset.offset() < Integer.MAX_VALUE) {
+            LOGGER.warn("Resuming from unfinished file: {}:{} (previous key: {})", offset.filename(), offset.offset(), previousKey);
             skipLines = offset.offset();
             prefixStream = Stream.of(new S3Location().withBucketName(partition.bucket()).withPrefix(previousKey));
         }

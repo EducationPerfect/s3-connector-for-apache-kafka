@@ -1,7 +1,7 @@
 package io.aiven.kafka.connect.s3.utils;
 
 import java.util.Iterator;
-import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * CountingIterator is a wrapper around an iterator that counts items.
@@ -9,15 +9,15 @@ import java.util.concurrent.atomic.AtomicLong;
  */
 public final class CountingIterator<T> implements Iterator<CountedItem<T>> {
     private final Iterator<T> iterator;
-    private final AtomicLong startCount;
+    private final AtomicInteger startCount;
 
-    public static <T> Iterator<CountedItem<T>> of(Iterator<T> iterator, long startCount) {
+    public static <T> Iterator<CountedItem<T>> of(Iterator<T> iterator, int startCount) {
         return new CountingIterator<>(startCount, iterator);
     }
 
-    public CountingIterator(long startCount, Iterator<T> iterator) {
+    public CountingIterator(int startCount, Iterator<T> iterator) {
         this.iterator = iterator;
-        this.startCount = new AtomicLong(startCount);
+        this.startCount = new AtomicInteger(startCount);
     }
 
     @Override

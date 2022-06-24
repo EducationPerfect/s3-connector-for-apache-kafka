@@ -16,28 +16,21 @@
 
 package io.aiven.kafka.connect.s3;
 
-import java.io.BufferedReader;
-import java.io.IOException;
-import java.io.InputStream;
-import java.io.InputStreamReader;
-import java.nio.charset.StandardCharsets;
-import java.time.LocalDateTime;
-import java.time.ZoneId;
-import java.time.ZonedDateTime;
-import java.time.format.DateTimeFormatter;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Base64;
-import java.util.Collection;
-import java.util.Collections;
-import java.util.HashMap;
-import java.util.Iterator;
-import java.util.List;
-import java.util.Map;
-import java.util.Objects;
-import java.util.Random;
-import java.util.zip.GZIPInputStream;
-
+import com.amazonaws.auth.AWSStaticCredentialsProvider;
+import com.amazonaws.auth.BasicAWSCredentials;
+import com.amazonaws.client.builder.AwsClientBuilder.EndpointConfiguration;
+import com.amazonaws.retry.PredefinedBackoffStrategies;
+import com.amazonaws.services.s3.AmazonS3;
+import com.amazonaws.services.s3.AmazonS3Client;
+import com.amazonaws.services.s3.AmazonS3ClientBuilder;
+import com.amazonaws.services.s3.model.S3Object;
+import com.amazonaws.services.s3.model.S3ObjectInputStream;
+import com.github.luben.zstd.ZstdInputStream;
+import com.google.common.collect.Lists;
+import io.aiven.kafka.connect.common.config.CompressionType;
+import io.aiven.kafka.connect.s3.config.S3SinkConfig;
+import io.aiven.kafka.connect.s3.testutils.BucketAccessor;
+import io.findify.s3mock.S3Mock;
 import org.apache.kafka.clients.consumer.OffsetAndMetadata;
 import org.apache.kafka.common.TopicPartition;
 import org.apache.kafka.common.record.TimestampType;
@@ -51,53 +44,30 @@ import org.apache.kafka.connect.header.ConnectHeaders;
 import org.apache.kafka.connect.header.Header;
 import org.apache.kafka.connect.sink.SinkRecord;
 import org.apache.kafka.connect.sink.SinkTaskContext;
-
-import io.aiven.kafka.connect.common.config.CompressionType;
-import io.aiven.kafka.connect.s3.config.AwsCredentialProviderFactory;
-import io.aiven.kafka.connect.s3.config.S3SinkConfig;
-import io.aiven.kafka.connect.s3.testutils.BucketAccessor;
-
-import com.amazonaws.auth.AWSCredentialsProvider;
-import com.amazonaws.auth.AWSStaticCredentialsProvider;
-import com.amazonaws.auth.BasicAWSCredentials;
-import com.amazonaws.client.builder.AwsClientBuilder.EndpointConfiguration;
-import com.amazonaws.retry.PredefinedBackoffStrategies;
-import com.amazonaws.services.s3.AmazonS3;
-import com.amazonaws.services.s3.AmazonS3Client;
-import com.amazonaws.services.s3.AmazonS3ClientBuilder;
-import com.amazonaws.services.s3.model.S3Object;
-import com.amazonaws.services.s3.model.S3ObjectInputStream;
-import com.github.luben.zstd.ZstdInputStream;
-import com.google.common.collect.Lists;
-import io.findify.s3mock.S3Mock;
 import org.assertj.core.util.introspection.FieldSupport;
-import org.junit.jupiter.api.AfterAll;
-import org.junit.jupiter.api.AfterEach;
-import org.junit.jupiter.api.BeforeAll;
-import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.*;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.Mock;
-import org.mockito.Mockito;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.xerial.snappy.SnappyInputStream;
 
-import static io.aiven.kafka.connect.s3.config.S3SinkConfig.AWS_ACCESS_KEY_ID;
-import static io.aiven.kafka.connect.s3.config.S3SinkConfig.AWS_S3_BUCKET;
-import static io.aiven.kafka.connect.s3.config.S3SinkConfig.AWS_S3_ENDPOINT;
-import static io.aiven.kafka.connect.s3.config.S3SinkConfig.AWS_S3_PREFIX;
-import static io.aiven.kafka.connect.s3.config.S3SinkConfig.AWS_S3_REGION;
-import static io.aiven.kafka.connect.s3.config.S3SinkConfig.AWS_SECRET_ACCESS_KEY;
-import static io.aiven.kafka.connect.s3.config.S3SinkConfig.OUTPUT_COMPRESSION;
-import static io.aiven.kafka.connect.s3.config.S3SinkConfig.OUTPUT_FIELDS;
+import java.io.BufferedReader;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.InputStreamReader;
+import java.nio.charset.StandardCharsets;
+import java.time.LocalDateTime;
+import java.time.ZoneId;
+import java.time.ZonedDateTime;
+import java.time.format.DateTimeFormatter;
+import java.util.*;
+import java.util.zip.GZIPInputStream;
+
+import static io.aiven.kafka.connect.s3.config.S3SinkConfig.*;
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertIterableEquals;
-import static org.junit.jupiter.api.Assertions.assertThrows;
-import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -771,20 +741,20 @@ public class S3SinkTaskTest {
             .containsExactly("[", "{\"name\":\"name2\"}", "]");
     }
 
-    @Test
-    final void requestCredentialProviderFromFactoryOnStart() {
-        final S3SinkTask task = new S3SinkTask();
-
-        final AwsCredentialProviderFactory mockedFactory = Mockito.mock(AwsCredentialProviderFactory.class);
-        final AWSCredentialsProvider provider = Mockito.mock(AWSCredentialsProvider.class);
-
-        task.credentialFactory = mockedFactory;
-        Mockito.when(mockedFactory.getProvider(any(S3SinkConfig.class))).thenReturn(provider);
-
-        task.start(properties);
-
-        Mockito.verify(mockedFactory, Mockito.times(1)).getProvider(any(S3SinkConfig.class));
-    }
+//    @Test
+//    final void requestCredentialProviderFromFactoryOnStart() {
+//        final S3SinkTask task = new S3SinkTask();
+//
+//        final AwsCredentialProviderFactory mockedFactory = Mockito.mock(AwsCredentialProviderFactory.class);
+//        final AWSCredentialsProvider provider = Mockito.mock(AWSCredentialsProvider.class);
+//
+//        task.credentialFactory = mockedFactory;
+//        Mockito.when(mockedFactory.getProvider(any(S3SinkConfig.class))).thenReturn(provider);
+//
+//        task.start(properties);
+//
+//        Mockito.verify(mockedFactory, Mockito.times(1)).getProvider(any(S3SinkConfig.class));
+//    }
 
     private SinkRecord createRecordWithStringValueSchema(final String topic,
                                                          final int partition,

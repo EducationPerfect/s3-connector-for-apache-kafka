@@ -1,6 +1,5 @@
 package io.aiven.kafka.connect.s3.utils;
 
-import java.io.IOException;
 import java.util.*;
 import java.util.stream.Stream;
 import java.util.stream.StreamSupport;
@@ -13,7 +12,7 @@ public final class StreamUtils {
      * @return a {@link Stream} of {@link CountedItem} elements for the source stream
      * @param <T> the type of the elements in the source stream
      */
-    public static <T> Stream<CountedItem<T>> counting(long startCount, Stream<T> stream) {
+    public static <T> Stream<CountedItem<T>> counting(int startCount, Stream<T> stream) {
         return counting(startCount, stream.iterator()).onClose(stream::close);
     }
 
@@ -24,7 +23,7 @@ public final class StreamUtils {
      * @return a {@link Stream} of {@link CountedItem} elements for the source iterator
      * @param <T> the type of the elements in the source iterator
      */
-    public static <T> Stream<CountedItem<T>> counting(long startCount, Iterator<T> iterator) {
+    public static <T> Stream<CountedItem<T>> counting(int startCount, Iterator<T> iterator) {
         var innerIterator = CountingIterator.of(iterator, startCount);
         return StreamSupport
                 .stream(Spliterators.spliteratorUnknownSize(innerIterator, Spliterator.ORDERED | Spliterator.NONNULL), false);
@@ -62,7 +61,7 @@ public final class StreamUtils {
      * @param <T> the type of the elements in the source stream
      */
     public static <T> CloseableIterator<T> asClosableIterator(Stream<T> stream) {
-        return new CloseableIterator<T>() {
+        return new CloseableIterator<>() {
             private final Iterator<T> iterator = stream.iterator();
 
             @Override

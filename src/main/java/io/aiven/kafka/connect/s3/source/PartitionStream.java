@@ -23,12 +23,23 @@ import java.util.List;
  */
 public final class PartitionStream {
     public final S3Partition partition;
+    public final S3Offset lastKnownOffset;
     public final CloseableIterator<List<RawRecordLine>> remainingBatches;
 
     public PartitionStream(
             S3Partition partition,
+            S3Offset lastKnownOffset,
             CloseableIterator<List<RawRecordLine>> remainingBatches) {
         this.partition = partition;
+        this.lastKnownOffset = lastKnownOffset;
         this.remainingBatches = remainingBatches;
+    }
+
+    public PartitionStream withBatches(CloseableIterator<List<RawRecordLine>> batches) {
+        return new PartitionStream(partition, lastKnownOffset, batches);
+    }
+
+    public PartitionStream withLastKnownOffset(S3Offset offset) {
+        return new PartitionStream(partition, offset, remainingBatches);
     }
 }
