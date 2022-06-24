@@ -139,9 +139,11 @@ public class S3SourceTask extends SourceTask {
         var record = RecordLine.parseJson(line.line());
 
         ConnectHeaders headers = new ConnectHeaders();
-        for (var headerIndex = 0; headerIndex < record.headers().length; headerIndex++) {
-            var header = record.headers()[headerIndex];
-            headers.add(header.key, new SchemaAndValue(null, header.value));
+
+        if (record.headers() != null) {
+            for (var header : record.headers()) {
+                headers.add(header.key, new SchemaAndValue(null, header.value));
+            }
         }
 
         return new SourceRecord(

@@ -16,16 +16,16 @@
 
 package io.aiven.kafka.connect.s3.config;
 
-import com.amazonaws.auth.AWSCredentialsProvider;
-import com.amazonaws.auth.AWSStaticCredentialsProvider;
-import com.amazonaws.auth.BasicAWSCredentials;
-import com.amazonaws.auth.STSAssumeRoleSessionCredentialsProvider;
+import com.amazonaws.auth.*;
 import com.amazonaws.client.builder.AwsClientBuilder;
 import com.amazonaws.services.securitytoken.AWSSecurityTokenService;
 import com.amazonaws.services.securitytoken.AWSSecurityTokenServiceClientBuilder;
 
 public class AwsCredentialProviderFactory {
     public AWSCredentialsProvider getProvider(final AivenCommonS3Config config) {
+        if (config.useDefaultCredentials()) {
+            return new DefaultAWSCredentialsProviderChain();
+        }
         if (config.hasAwsStsRole()) {
             return getStsProvider(config);
         }
@@ -65,5 +65,4 @@ public class AwsCredentialProviderFactory {
                 )
         );
     }
-
 }

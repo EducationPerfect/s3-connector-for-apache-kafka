@@ -103,6 +103,8 @@ public class AivenCommonS3Config extends AivenCommonConfig {
     public static final String AWS_S3_REGION_CONFIG = "aws.s3.region";
     public static final String AWS_S3_PART_SIZE = "aws.s3.part.size.bytes";
 
+    public static final String AWS_USE_DEFAULT_CREDENTIALS_CONFIG = "aws.credentials.default";
+
     // FIXME since we support so far both old style and new style of property names
     //      Importance was set to medium,
     //      as soon we will migrate to new values it must be set to HIGH
@@ -177,6 +179,19 @@ public class AivenCommonS3Config extends AivenCommonConfig {
 
     protected static void addAwsConfigGroup(final ConfigDef configDef) {
         int awsGroupCounter = 0;
+
+        configDef.define(
+            AWS_USE_DEFAULT_CREDENTIALS_CONFIG,
+            Type.BOOLEAN,
+            false,
+            null,
+            Importance.MEDIUM,
+            "Whether to use default AWS credential discovery",
+            GROUP_AWS,
+            awsGroupCounter++,
+            ConfigDef.Width.NONE,
+            AWS_USE_DEFAULT_CREDENTIALS_CONFIG
+        );
 
         configDef.define(
             AWS_ACCESS_KEY_ID_CONFIG,
@@ -675,34 +690,37 @@ public class AivenCommonS3Config extends AivenCommonConfig {
 
     private void validate() {
         final AwsStsRole awsStsRole = getStsRole();
-        if (!awsStsRole.isValid()) {
-            final AwsAccessSecret awsNewSecret = getNewAwsCredentials();
-            if (!awsNewSecret.isValid()) {
-                final AwsAccessSecret awsOldSecret = getOldAwsCredentials();
-                if (!awsOldSecret.isValid()) {
+        if (!useDefaultCredentials()) {
+            if (!awsStsRole.isValid()) {
+                final AwsAccessSecret awsNewSecret = getNewAwsCredentials();
+                if (!awsNewSecret.isValid()) {
+                    final AwsAccessSecret awsOldSecret = getOldAwsCredentials();
+                    if (!awsOldSecret.isValid()) {
+                        throw new ConfigException(
+                                String.format(
+                                        "Either {%s, %s} or {%s, %s} should be set",
+                                        AWS_ACCESS_KEY_ID_CONFIG, AWS_SECRET_ACCESS_KEY_CONFIG,
+                                        AWS_STS_ROLE_ARN, AWS_STS_ROLE_SESSION_NAME)
+                        );
+
+                    } else {
+                        LOGGER.error(
+                                String.format(
+                                        "Config options %s and %s are deprecated",
+                                        AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY
+                                ));
+                    }
+                }
+            } else {
+                final AwsStsEndpointConfig stsEndpointConfig = getStsEndpointConfig();
+                if (!stsEndpointConfig.isValid()
+                        && !stsEndpointConfig.getServiceEndpoint().equals(AwsStsEndpointConfig.AWS_STS_GLOBAL_ENDPOINT)) {
                     throw new ConfigException(
                             String.format(
-                                    "Either {%s, %s} or {%s, %s} should be set",
-                                    AWS_ACCESS_KEY_ID_CONFIG, AWS_SECRET_ACCESS_KEY_CONFIG,
-                                    AWS_STS_ROLE_ARN, AWS_STS_ROLE_SESSION_NAME)
+                                    "%s should be specified together with %s",
+                                    AWS_S3_REGION_CONFIG, AWS_STS_CONFIG_ENDPOINT)
                     );
-                } else {
-                    LOGGER.error(
-                        String.format(
-                            "Config options %s and %s are deprecated",
-                            AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY
-                        ));
                 }
-            }
-        } else {
-            final AwsStsEndpointConfig stsEndpointConfig = getStsEndpointConfig();
-            if (!stsEndpointConfig.isValid()
-                && !stsEndpointConfig.getServiceEndpoint().equals(AwsStsEndpointConfig.AWS_STS_GLOBAL_ENDPOINT)) {
-                throw new ConfigException(
-                    String.format(
-                        "%s should be specified together with %s",
-                        AWS_S3_REGION_CONFIG, AWS_STS_CONFIG_ENDPOINT)
-                );
             }
         }
         if (Objects.isNull(getString(AWS_S3_BUCKET_NAME_CONFIG))
@@ -724,6 +742,10 @@ public class AivenCommonS3Config extends AivenCommonConfig {
                 throw new ConfigException(msg);
             }
         }
+    }
+
+    public Boolean useDefaultCredentials() {
+        return getBoolean(AWS_USE_DEFAULT_CREDENTIALS_CONFIG);
     }
 
     public AwsAccessSecret getOldAwsCredentials() {
