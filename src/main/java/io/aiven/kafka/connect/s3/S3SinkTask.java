@@ -34,6 +34,7 @@ import org.apache.kafka.connect.sink.SinkRecord;
 import org.apache.kafka.connect.sink.SinkTask;
 
 import io.aiven.kafka.connect.common.config.FilenameTemplateVariable;
+import io.aiven.kafka.connect.common.config.FormatType;
 import io.aiven.kafka.connect.common.grouper.RecordGrouper;
 import io.aiven.kafka.connect.common.grouper.RecordGrouperFactory;
 import io.aiven.kafka.connect.common.output.OutputWriter;
@@ -119,8 +120,11 @@ public class S3SinkTask extends SinkTask {
 
     @Override
     public void flush(final Map<TopicPartition, OffsetAndMetadata> offsets) {
-        recordGrouper.records().forEach(this::flushFile);
-        recordGrouper.clear();
+        try {
+            recordGrouper.records().forEach(this::flushFile);
+        } finally {
+            recordGrouper.clear();
+        }
     }
 
     private void flushFile(final String filename, final List<SinkRecord> records) {
@@ -201,7 +205,9 @@ public class S3SinkTask extends SinkTask {
                     record, VariableTemplatePart.Parameter.of("padding", "true")
                 )
             );
-        return prefix + key + config.getCompressionType().extension();
+        // Keep this in line with io.aiven.kafka.connect.common.config.AivenCommonConfig#getFilename
+        final String formatSuffix = FormatType.AVRO.equals(config.getFormatType()) ? ".avro" : "";
+        return prefix + key + formatSuffix + config.getCompressionType().extension();
     }
 
 }
