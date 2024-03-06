@@ -102,7 +102,7 @@ public class S3SourceTask extends SourceTask {
         var lastOffset = CollectionUtils.last(nextBatch).map(RawRecordLine::offset).orElse(current.lastKnownOffset);
 
         if (!nextBatch.isEmpty()) {
-            LOGGER.info("Processing batch of {}, last offset: {}", nextBatch.size(), lastOffset);
+            LOGGER.debug("Processing batch of {}, last offset: {}", nextBatch.size(), lastOffset);
         }
 
         var sourceRecords = nextBatch
@@ -128,6 +128,11 @@ public class S3SourceTask extends SourceTask {
                 throw new InterruptedException(e.getMessage());
             }
             partitionsQueue.addLast(current.withLastKnownOffset(lastOffset).withBatches(null));
+        }
+
+        // to avoid accessing the bucket at a crazy speed when there is no new data
+        if (sourceRecords.isEmpty()) {
+            Thread.sleep(config.getEmptyPollDelayMs());
         }
 
         return sourceRecords;

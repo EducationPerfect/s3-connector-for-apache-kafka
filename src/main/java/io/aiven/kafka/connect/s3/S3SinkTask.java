@@ -78,7 +78,7 @@ public class S3SinkTask extends SinkTask {
     @Override
     public void put(final Collection<SinkRecord> records) throws ConnectException {
         Objects.requireNonNull(records, "records cannot be null");
-        LOGGER.info("Processing {} records", records.size());
+        LOGGER.debug("Processing {} records", records.size());
         records.forEach(recordGrouper :: put);
     }
 
