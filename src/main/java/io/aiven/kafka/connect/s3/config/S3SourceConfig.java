@@ -14,6 +14,8 @@ public class S3SourceConfig extends AivenCommonS3Config {
 
     public static final String BATCH_SIZE_CONFIG = "batch.size";
 
+    public static final String EMPTY_POLL_DELAY_MS = "poll.delay.empty.ms";
+
     public static final String FILES_PAGE_SIZE_CONFIG = "files.page.size";
 
     public static final String GROUP_S3Config = "S3Config";
@@ -38,6 +40,8 @@ public class S3SourceConfig extends AivenCommonS3Config {
     public int getBatchSize() {
         return getInt(BATCH_SIZE_CONFIG);
     }
+
+    public int getEmptyPollDelayMs() { return getInt(EMPTY_POLL_DELAY_MS); }
 
     public int getFilesPageSize() {
         return getInt(FILES_PAGE_SIZE_CONFIG);
@@ -99,6 +103,18 @@ public class S3SourceConfig extends AivenCommonS3Config {
                 groupOrder++,
                 ConfigDef.Width.NONE,
                 FILES_PAGE_SIZE_CONFIG);
+
+        configDef.define(
+                EMPTY_POLL_DELAY_MS,
+                ConfigDef.Type.INT,
+                500,
+                ConfigDef.Range.between(0, 600000),
+                ConfigDef.Importance.MEDIUM,
+                "The amount of time (in milliseconds) to wait before polling for more messages when the previous batch returned no results",
+                GROUP_Connector,
+                groupOrder++,
+                ConfigDef.Width.NONE,
+                EMPTY_POLL_DELAY_MS);
     }
 
     protected static void addS3SourceConfigGroup(final ConfigDef configDef) {

@@ -7,8 +7,44 @@ import org.junit.jupiter.api.Test;
 import java.util.HashMap;
 
 import static org.assertj.core.api.Assertions.assertThatCollection;
+import static org.assertj.core.api.Assertions.assertThat;
 
 public final class S3SourceTaskTest extends SourceTaskTestBase {
+
+    @Test
+    public void should_by_default_pause_between_polls_when_empty() throws Exception {
+        var partitionPrefixes = String.format("aiven/%1$s/partition=0/,aiven/%1$s/partition=1/", TEST_TOPIC);
+
+        var taskProperties = new HashMap<>(commonProperties);
+        taskProperties.put(S3SourceConfig.PARTITION_PREFIXES_CONFIG, partitionPrefixes);
+        sourceTask.start(taskProperties);
+
+        var startTime = System.currentTimeMillis();
+        var firstBatch = poll();
+        var endTime = System.currentTimeMillis();
+
+        var elapsedTime = endTime - startTime;
+        assertThat(elapsedTime).isGreaterThanOrEqualTo(500);
+        assertThat(firstBatch).isEmpty();
+    }
+
+    @Test
+    public void should_respect_configured_between_polls_when_empty() throws Exception {
+        var partitionPrefixes = String.format("aiven/%1$s/partition=0/,aiven/%1$s/partition=1/", TEST_TOPIC);
+
+        var taskProperties = new HashMap<>(commonProperties);
+        taskProperties.put(S3SourceConfig.PARTITION_PREFIXES_CONFIG, partitionPrefixes);
+        taskProperties.put(S3SourceConfig.EMPTY_POLL_DELAY_MS, "10");
+        sourceTask.start(taskProperties);
+
+        var startTime = System.currentTimeMillis();
+        var firstBatch = poll();
+        var endTime = System.currentTimeMillis();
+
+        var elapsedTime = endTime - startTime;
+        assertThat(elapsedTime).isBetween(10L, 100L);
+        assertThat(firstBatch).isEmpty();
+    }
 
     @Test
     public void should_poll_multiple_partitions() throws Exception {
